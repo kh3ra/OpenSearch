@@ -32,6 +32,7 @@ import org.opensearch.common.lucene.store.ByteArrayIndexInput;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.unit.ByteSizeUnit;
 import org.opensearch.index.store.exception.ChecksumCombinationException;
+import org.opensearch.repositories.blobstore.BlobStoreRepository;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -69,6 +70,9 @@ public class RemoteDirectory extends Directory {
 
     private final UnaryOperator<InputStream> downloadRateLimiter;
 
+    private final UnaryOperator<InputStream> mergedSegmentDownloadRateLimiter;
+
+
     /**
      * Number of bytes in the segment file to store checksum
      */
@@ -79,19 +83,21 @@ public class RemoteDirectory extends Directory {
     }
 
     public RemoteDirectory(BlobContainer blobContainer) {
-        this(blobContainer, UnaryOperator.identity(), UnaryOperator.identity(), UnaryOperator.identity());
+        this(blobContainer, UnaryOperator.identity(), UnaryOperator.identity(), UnaryOperator.identity(), UnaryOperator.identity());
     }
 
     public RemoteDirectory(
         BlobContainer blobContainer,
         UnaryOperator<OffsetRangeInputStream> uploadRateLimiter,
         UnaryOperator<OffsetRangeInputStream> lowPriorityUploadRateLimiter,
-        UnaryOperator<InputStream> downloadRateLimiter
+        UnaryOperator<InputStream> downloadRateLimiter,
+        UnaryOperator<InputStream> mergedSegmentReplicationRateLimiter
     ) {
         this.blobContainer = blobContainer;
         this.lowPriorityUploadRateLimiter = lowPriorityUploadRateLimiter;
         this.uploadRateLimiter = uploadRateLimiter;
         this.downloadRateLimiter = downloadRateLimiter;
+        this.mergedSegmentDownloadRateLimiter = mergedSegmentReplicationRateLimiter;
     }
 
     /**
@@ -236,6 +242,9 @@ public class RemoteDirectory extends Directory {
         InputStream inputStream = null;
         try {
             inputStream = blobContainer.readBlob(name);
+            if (context.mergeInfo() != null){
+                return new RemoteIndexInput(name, mergedSegmentDownloadRateLimiter.apply(inputStream), fileLength);
+            }
             return new RemoteIndexInput(name, downloadRateLimiter.apply(inputStream), fileLength);
         } catch (Exception e) {
             // In case the RemoteIndexInput creation fails, close the input stream to avoid file handler leak.

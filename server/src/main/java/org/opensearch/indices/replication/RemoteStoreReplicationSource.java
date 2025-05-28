@@ -14,6 +14,7 @@ import org.apache.lucene.index.SegmentInfos;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FilterDirectory;
 import org.apache.lucene.util.Version;
+import org.opensearch.action.ActionListenerResponseHandler;
 import org.opensearch.common.concurrent.GatedCloseable;
 import org.opensearch.common.util.CancellableThreads;
 import org.opensearch.core.action.ActionListener;
@@ -24,6 +25,8 @@ import org.opensearch.index.store.Store;
 import org.opensearch.index.store.StoreFileMetadata;
 import org.opensearch.index.store.remote.metadata.RemoteSegmentMetadata;
 import org.opensearch.indices.replication.checkpoint.ReplicationCheckpoint;
+import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.TransportRequestOptions;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -35,6 +38,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+
+import static org.opensearch.indices.replication.SegmentReplicationSourceService.Actions.GET_MERGED_SEGMENT_FILES;
 
 /**
  * Implementation of a {@link SegmentReplicationSource} where the source is remote store.
@@ -123,6 +128,28 @@ public class RemoteStoreReplicationSource implements SegmentReplicationSource {
         BiConsumer<String, Long> fileProgressTracker,
         ActionListener<GetSegmentFilesResponse> listener
     ) {
+        getSegmentFiles(replicationId, checkpoint, filesToFetch, indexShard, fileProgressTracker, listener, false);
+    }
+
+    @Override
+    public void getMergedSegmentFiles(
+        long replicationId,
+        ReplicationCheckpoint checkpoint,
+        List<StoreFileMetadata> filesToFetch,
+        IndexShard indexShard,
+        BiConsumer<String, Long> fileProgressTracker,
+        ActionListener<GetSegmentFilesResponse> listener
+    ) {
+        getSegmentFiles(replicationId, checkpoint, filesToFetch, indexShard, fileProgressTracker, listener, true);
+    }
+
+    private void getSegmentFiles(long replicationId,
+                                 ReplicationCheckpoint checkpoint,
+                                 List<StoreFileMetadata> filesToFetch,
+                                 IndexShard indexShard,
+                                 BiConsumer<String, Long> fileProgressTracker,
+                                 ActionListener<GetSegmentFilesResponse> listener,
+                                 boolean areMergedSegments){
         try {
             if (filesToFetch.isEmpty()) {
                 listener.onResponse(new GetSegmentFilesResponse(Collections.emptyList()));
@@ -138,6 +165,17 @@ public class RemoteStoreReplicationSource implements SegmentReplicationSource {
                     assert directoryFiles.contains(file) == false : "Local store already contains the file " + file;
                     toDownloadSegmentNames.add(file);
                 }
+                if (areMergedSegments) {
+                    indexShard.getFileDownloader()
+                        .download(
+                            remoteDirectory,
+                            storeDirectory,
+                            null,
+                            toDownloadSegmentNames,
+                            () -> {},
+                            true
+                        );
+                }
                 indexShard.getFileDownloader()
                     .downloadAsync(
                         cancellableThreads,
@@ -149,7 +187,7 @@ public class RemoteStoreReplicationSource implements SegmentReplicationSource {
             } else {
                 listener.onResponse(new GetSegmentFilesResponse(filesToFetch));
             }
-        } catch (IOException | RuntimeException e) {
+        } catch (IOException | RuntimeException | InterruptedException e) {
             listener.onFailure(e);
         }
     }

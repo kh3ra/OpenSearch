@@ -8,6 +8,7 @@
 
 package org.opensearch.indices.replication;
 
+import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
@@ -688,21 +689,25 @@ public class SegmentReplicationTargetService extends AbstractLifecycleComponent 
             if (ongoingReplicationTargetList != null) {
                 for (MergedSegmentReplicationTarget ongoingReplicationTarget : ongoingReplicationTargetList) {
                     if (ongoingReplicationTarget.getCheckpoint().getPrimaryTerm() < receivedCheckpoint.getPrimaryTerm()) {
-                        logger.debug(
-                            () -> new ParameterizedMessage(
-                                "Cancelling ongoing merge replication {} from old primary with primary term {}",
-                                ongoingReplicationTarget.description(),
-                                ongoingReplicationTarget.getCheckpoint().getPrimaryTerm()
-                            )
-                        );
+                        if (logger.getLevel() == Level.DEBUG) {
+                            logger.debug(
+                                () -> new ParameterizedMessage(
+                                    "Cancelling ongoing merge replication {} from old primary with primary term {}",
+                                    ongoingReplicationTarget.description(),
+                                    ongoingReplicationTarget.getCheckpoint().getPrimaryTerm()
+                                )
+                            );
+                        }
                         ongoingReplicationTarget.cancel("Cancelling stuck merged segment target after new primary");
                     } else if (ongoingReplicationTarget.checkpoint.equals(receivedCheckpoint)) {
-                        logger.debug(
-                            () -> new ParameterizedMessage(
-                                "Ignoring new merge replication checkpoint - shard is currently replicating to checkpoint {}",
-                                ongoingReplicationTarget.getCheckpoint()
-                            )
-                        );
+                        if (logger.getLevel() == Level.DEBUG) {
+                            logger.debug(
+                                () -> new ParameterizedMessage(
+                                    "Ignoring new merge replication checkpoint - shard is currently replicating to checkpoint {}",
+                                    ongoingReplicationTarget.getCheckpoint()
+                                )
+                            );
+                        }
                         channel.sendResponse(
                             new IllegalArgumentException(String.format(Locale.ROOT, "merged segment %s already exist", receivedCheckpoint))
                         );
@@ -714,15 +719,17 @@ public class SegmentReplicationTargetService extends AbstractLifecycleComponent 
                 startMergedSegmentReplication(replicaShard, receivedCheckpoint, new SegmentReplicationListener() {
                     @Override
                     public void onReplicationDone(SegmentReplicationState state) {
-                        logger.debug(
-                            () -> new ParameterizedMessage(
-                                "[shardId {}] [replication id {}] Merge Replication complete to {}, timing data: {}",
-                                replicaShard.shardId().getId(),
-                                state.getReplicationId(),
-                                receivedCheckpoint,
-                                state.getTimingData()
-                            )
-                        );
+                        if (logger.getLevel() == Level.DEBUG) {
+                            logger.debug(
+                                () -> new ParameterizedMessage(
+                                    "[shardId {}] [replication id {}] Merge Replication complete to {}, timing data: {}",
+                                    replicaShard.shardId().getId(),
+                                    state.getReplicationId(),
+                                    receivedCheckpoint,
+                                    state.getTimingData()
+                                )
+                            );
+                        }
                         try {
                             channel.sendResponse(TransportResponse.Empty.INSTANCE);
                         } catch (Exception e) {

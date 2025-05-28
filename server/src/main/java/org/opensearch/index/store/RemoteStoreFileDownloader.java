@@ -62,7 +62,17 @@ public final class RemoteStoreFileDownloader {
         Collection<String> toDownloadSegments,
         ActionListener<Void> listener
     ) {
-        downloadInternal(cancellableThreads, source, destination, null, toDownloadSegments, () -> {}, listener);
+        downloadInternal(cancellableThreads, source, destination, null, toDownloadSegments, () -> {}, listener, false);
+    }
+
+    public void download(
+        Directory source,
+        Directory destination,
+        Directory secondDestination,
+        Collection<String> toDownloadSegments,
+        Runnable onFileCompletion
+    ) throws IOException, InterruptedException {
+        download(source, destination, secondDestination, toDownloadSegments, onFileCompletion, false);
     }
 
     /**
@@ -82,11 +92,12 @@ public final class RemoteStoreFileDownloader {
         Directory destination,
         Directory secondDestination,
         Collection<String> toDownloadSegments,
-        Runnable onFileCompletion
+        Runnable onFileCompletion,
+        boolean isLowPriority
     ) throws InterruptedException, IOException {
         final CancellableThreads cancellableThreads = new CancellableThreads();
         final PlainActionFuture<Void> listener = PlainActionFuture.newFuture();
-        downloadInternal(cancellableThreads, source, destination, secondDestination, toDownloadSegments, onFileCompletion, listener);
+        downloadInternal(cancellableThreads, source, destination, secondDestination, toDownloadSegments, onFileCompletion, listener, isLowPriority);
         try {
             listener.get();
         } catch (ExecutionException e) {
@@ -112,7 +123,8 @@ public final class RemoteStoreFileDownloader {
         @Nullable Directory secondDestination,
         Collection<String> toDownloadSegments,
         Runnable onFileCompletion,
-        ActionListener<Void> listener
+        ActionListener<Void> listener,
+        boolean isLowPriority
     ) {
         final Queue<String> queue = new ConcurrentLinkedQueue<>(toDownloadSegments);
         // Choose the minimum of:
@@ -126,7 +138,7 @@ public final class RemoteStoreFileDownloader {
         logger.trace("Starting download of {} files with {} threads", queue.size(), threads);
         final ActionListener<Void> allFilesListener = new GroupedActionListener<>(ActionListener.map(listener, r -> null), threads);
         for (int i = 0; i < threads; i++) {
-            copyOneFile(cancellableThreads, source, destination, secondDestination, queue, onFileCompletion, allFilesListener);
+            copyOneFile(cancellableThreads, source, destination, secondDestination, queue, onFileCompletion, allFilesListener, isLowPriority);
         }
     }
 
@@ -137,7 +149,8 @@ public final class RemoteStoreFileDownloader {
         @Nullable Directory secondDestination,
         Queue<String> queue,
         Runnable onFileCompletion,
-        ActionListener<Void> listener
+        ActionListener<Void> listener,
+        boolean isLowPriority
     ) {
         final String file = queue.poll();
         if (file == null) {
@@ -147,6 +160,7 @@ public final class RemoteStoreFileDownloader {
             threadPool.executor(ThreadPool.Names.REMOTE_RECOVERY).submit(() -> {
                 logger.trace("Downloading file {}", file);
                 try {
+
                     cancellableThreads.executeIO(() -> {
                         destination.copyFrom(source, file, file, IOContext.DEFAULT);
                         logger.trace("Downloaded file {} of size {}", file, destination.fileLength(file));
@@ -161,7 +175,7 @@ public final class RemoteStoreFileDownloader {
                     listener.onFailure(e);
                     return;
                 }
-                copyOneFile(cancellableThreads, source, destination, secondDestination, queue, onFileCompletion, listener);
+                copyOneFile(cancellableThreads, source, destination, secondDestination, queue, onFileCompletion, listener, isLowPriority);
             });
         }
     }

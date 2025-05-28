@@ -984,12 +984,29 @@ public class Store extends AbstractIndexShardComponent implements Closeable, Ref
             boolean success = false;
             long startTime = System.currentTimeMillis();
             try {
-                super.copyFrom(from, src, dest, context);
+                if (context.mergeInfo() != null && true) { // check remote?
+                    copyMergedSegmentsFromRemoteStore(from, src, dest, context);
+                } else {
+                    super.copyFrom(from, src, dest, context);
+                }
                 success = true;
                 afterDownload(fileSize, startTime);
             } finally {
                 if (!success) {
                     downloadFailed(fileSize, startTime);
+                }
+            }
+        }
+
+        private void copyMergedSegmentsFromRemoteStore(Directory from, String src, String dest, IOContext context) throws IOException {
+            boolean success = false;
+            try (IndexInput is = from.openInput(src, IOContext.READONCE);
+                 IndexOutput os = createOutput(dest, context)) {
+                os.copyBytes(is, is.length());
+                success = true;
+            } finally {
+                if (!success) {
+                    org.apache.lucene.util.IOUtils.deleteFilesIgnoringExceptions(this, dest);
                 }
             }
         }

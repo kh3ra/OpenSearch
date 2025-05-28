@@ -454,6 +454,8 @@ public abstract class BlobStoreRepository extends AbstractLifecycleComponent imp
 
     private final CounterMetric remoteUploadLowPriorityRateLimitingTimeInNanos = new CounterMetric();
 
+    private final CounterMetric remoteDownloadLowPriorityRateLimitingTimeInNanos = new CounterMetric();
+
     public static final ChecksumBlobStoreFormat<Metadata> GLOBAL_METADATA_FORMAT = new ChecksumBlobStoreFormat<>(
         "metadata",
         METADATA_NAME_FORMAT,
@@ -4318,6 +4320,20 @@ public abstract class BlobStoreRepository extends AbstractLifecycleComponent imp
             ),
             recoverySettings::recoveryRateLimiter,
             remoteDownloadRateLimitingTimeInNanos,
+            BlobStoreTransferContext.REMOTE_DOWNLOAD
+        );
+    }
+
+    public InputStream maybeRateLimitMergedSegmentRemoteDownloadTransfers(InputStream inputStream) {
+        return maybeRateLimit(
+            maybeRateLimit(
+                inputStream,
+                () -> remoteDownloadRateLimiter,
+                remoteDownloadRateLimitingTimeInNanos,
+                BlobStoreTransferContext.REMOTE_DOWNLOAD
+            ),
+            recoverySettings::mergedSegmentReplicationRateLimiter,
+            remoteDownloadLowPriorityRateLimitingTimeInNanos,
             BlobStoreTransferContext.REMOTE_DOWNLOAD
         );
     }
