@@ -32,36 +32,146 @@
 
 package org.opensearch.index.engine;
 
-import org.apache.lucene.index.IndexWriter;
-import org.apache.lucene.index.LeafReader;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.ParameterizedMessage;
+import org.apache.lucene.index.*;
+import org.apache.lucene.store.Directory;
+import org.apache.lucene.store.IOContext;
+import org.apache.lucene.util.Version;
+import org.opensearch.action.ActionListenerResponseHandler;
+import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.service.ClusterService;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.transport.TransportResponse;
+import org.opensearch.index.shard.IndexShard;
+import org.opensearch.index.store.RemoteSegmentStoreDirectory;
 import org.opensearch.indices.recovery.RecoverySettings;
+import org.opensearch.indices.replication.SegmentReplicationTargetService;
+import org.opensearch.indices.replication.checkpoint.PublishMergedSegmentRequest;
+import org.opensearch.indices.replication.checkpoint.ReplicationSegmentCheckpoint;
+import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 
 import java.io.IOException;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Implementation of a {@link IndexWriter.IndexReaderWarmer} when remote store is enabled.
+ * Implementation of a {@link IndexWriter.IndexReaderWarmer} when local on-disk segment replication is enabled.
  *
  * @opensearch.internal
  */
 public class RemoteStoreMergedSegmentWarmer implements IndexWriter.IndexReaderWarmer {
+    private static final Logger logger = LogManager.getLogger(RemoteStoreMergedSegmentWarmer.class);
     private final TransportService transportService;
     private final RecoverySettings recoverySettings;
     private final ClusterService clusterService;
+    private final IndexShard indexShard;
 
     public RemoteStoreMergedSegmentWarmer(
         TransportService transportService,
         RecoverySettings recoverySettings,
-        ClusterService clusterService
+        ClusterService clusterService,
+        IndexShard indexShard
     ) {
         this.transportService = transportService;
         this.recoverySettings = recoverySettings;
         this.clusterService = clusterService;
+        this.indexShard = indexShard;
     }
 
     @Override
     public void warm(LeafReader leafReader) throws IOException {
-        // TODO: remote store merged segment warmer
+        SegmentCommitInfo segmentCommitInfo = ((SegmentReader) leafReader).getSegmentInfo();
+        ReplicationSegmentCheckpoint mergedSegment = indexShard.computeReplicationSegmentCheckpoint(segmentCommitInfo);
+        PublishMergedSegmentRequest request = new PublishMergedSegmentRequest(mergedSegment);
+
+        List<DiscoveryNode> activeReplicaNodes = indexShard.getActiveReplicaNodes();
+        if (activeReplicaNodes.isEmpty()) {
+            logger.trace("There are no active replicas, skip pre copy merged segment [{}]", segmentCommitInfo.info.name);
+            return;
+        }
+
+        logger.info("#### uploading files.");
+        uploadNewSegments(
+            segmentCommitInfo.files(),
+            segmentCommitInfo.info.getVersion(),
+            mergedSegment
+        );
+        logger.info("#### uploading files complete. Sending notification to replica nodes.");
+        logger.info("Sleeping. Check primary and remote for files: [{}]", segmentCommitInfo.files());
+        try {
+            Thread.sleep(60000);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+        CountDownLatch countDownLatch = new CountDownLatch(activeReplicaNodes.size());
+        AtomicInteger successfulCount = new AtomicInteger(0);
+        AtomicInteger failureCount = new AtomicInteger(0);
+        for (DiscoveryNode replicaNode : activeReplicaNodes) {
+            ActionListener<TransportResponse> listener = ActionListener.wrap(r -> {
+                successfulCount.incrementAndGet();
+                countDownLatch.countDown();
+            }, e -> {
+                failureCount.incrementAndGet();
+                countDownLatch.countDown();
+            });
+            transportService.sendRequest(
+                replicaNode,
+                SegmentReplicationTargetService.Actions.PUBLISH_MERGED_SEGMENT,
+                request,
+                new ActionListenerResponseHandler<>(listener, (in) -> TransportResponse.Empty.INSTANCE, ThreadPool.Names.GENERIC)
+            );
+        }
+        try {
+            countDownLatch.await(recoverySettings.getMergedSegmentReplicationTimeout().seconds(), TimeUnit.SECONDS);
+            logger.trace(
+                "pre copy merged segment [{}] to [{}] active replicas, [{}] successful, [{}] failed",
+                segmentCommitInfo.info.name,
+                activeReplicaNodes.size(),
+                successfulCount,
+                failureCount
+            );
+        } catch (InterruptedException e) {
+            logger.warn(
+                () -> new ParameterizedMessage("Interrupted while waiting for pre copy merged segment [{}]", segmentCommitInfo.info.name),
+                e
+            );
+        }
+    }
+
+    List<RemoteSegmentStoreDirectory.UploadedSegmentMetadata> uploadNewSegments(
+        Collection<String> localSegmentsPostMerge,
+        Version version,
+        ReplicationSegmentCheckpoint checkpoint
+    ) {
+        RemoteSegmentStoreDirectory remoteSegmentStoreDirectory = indexShard.getRemoteDirectory();
+        Directory storeDirectory = indexShard.store().directory();
+        Map<String, RemoteSegmentStoreDirectory.UploadedSegmentMetadata> uploadedSegmentMetadata = new HashMap<>();
+        ActionListener<Void> aggregatedListener = ActionListener.wrap(resp -> {
+            logger.info("@ Listener: " + resp);
+        }, ex -> {
+            logger.warn(() -> new ParameterizedMessage("Exception: [{}] while uploading segment files for shard {}", ex, indexShard.shardId()), ex);
+            if (ex instanceof CorruptIndexException) {
+                indexShard.failShard(ex.getMessage(), ex);
+            }
+        });
+
+        localSegmentsPostMerge.forEach(segment -> {
+            logger.debug(" Copying over segment {} to remote store", segment);
+            remoteSegmentStoreDirectory.copyFrom(storeDirectory, segment, IOContext.DEFAULT, aggregatedListener, true);
+            RemoteSegmentStoreDirectory.UploadedSegmentMetadata metadata = remoteSegmentStoreDirectory.getSegmentsUploadedToRemoteStore().get(segment);
+            metadata.setWrittenByMajor(version.major);
+            uploadedSegmentMetadata.put(segment, metadata);
+        });
+
+
+        return null;
     }
 }
