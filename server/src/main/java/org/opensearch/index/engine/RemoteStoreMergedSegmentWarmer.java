@@ -44,11 +44,16 @@ import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.transport.TransportResponse;
+import org.opensearch.index.MergedSegmentRegistry;
+import org.opensearch.index.seqno.SequenceNumbers;
 import org.opensearch.index.shard.IndexShard;
 import org.opensearch.index.store.RemoteSegmentStoreDirectory;
+import org.opensearch.index.store.RemoteSegmentStoreDirectory.UploadedSegmentMetadata;
+import org.opensearch.index.translog.Translog;
 import org.opensearch.indices.recovery.RecoverySettings;
 import org.opensearch.indices.replication.SegmentReplicationTargetService;
 import org.opensearch.indices.replication.checkpoint.PublishMergedSegmentRequest;
+import org.opensearch.indices.replication.checkpoint.ReplicationCheckpoint;
 import org.opensearch.indices.replication.checkpoint.ReplicationSegmentCheckpoint;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
@@ -88,9 +93,9 @@ public class RemoteStoreMergedSegmentWarmer implements IndexWriter.IndexReaderWa
 
     @Override
     public void warm(LeafReader leafReader) throws IOException {
+        logger.info("WARM CALLED {}", Thread.currentThread().getName());
         SegmentCommitInfo segmentCommitInfo = ((SegmentReader) leafReader).getSegmentInfo();
         ReplicationSegmentCheckpoint mergedSegment = indexShard.computeReplicationSegmentCheckpoint(segmentCommitInfo);
-        PublishMergedSegmentRequest request = new PublishMergedSegmentRequest(mergedSegment);
 
         List<DiscoveryNode> activeReplicaNodes = indexShard.getActiveReplicaNodes();
         if (activeReplicaNodes.isEmpty()) {
@@ -98,19 +103,50 @@ public class RemoteStoreMergedSegmentWarmer implements IndexWriter.IndexReaderWa
             return;
         }
 
-        logger.info("#### uploading files.");
-        uploadNewSegments(
+        logger.info("#### Updating registry");
+        final MergedSegmentRegistry registry = MergedSegmentRegistry.getInstance();
+        segmentCommitInfo.files().forEach(registry::registerMergedSegment);
+        logger.info("#### Updated registry");
+
+
+        logger.info("#### uploading segment files.");
+        Map<String, UploadedSegmentMetadata> uploadedSegments = uploadNewSegments(
             segmentCommitInfo.files(),
             segmentCommitInfo.info.getVersion(),
             mergedSegment
         );
-        logger.info("#### uploading files complete. Sending notification to replica nodes.");
-        logger.info("Sleeping. Check primary and remote for files: [{}]", segmentCommitInfo.files());
-        try {
-            Thread.sleep(60000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+        logger.info("#### uploading segment files complete.");
+
+        logger.info("????? SegmentCommitInfo [{}]", segmentCommitInfo.info);
+        logger.info("#### uploading metadata files - VERSIONS");
+        segmentCommitInfo.info.files().forEach(file -> {logger.info("File {} | Version {}", file, segmentCommitInfo.info.getVersion().major);});
+        SegmentInfos segmentInfosSnapshot = new SegmentInfos(segmentCommitInfo.info.getVersion().major);
+        segmentInfosSnapshot.add(segmentCommitInfo);
+        List<String> uploadedSegmentsList = uploadedSegments.keySet().stream().toList();
+        indexShard.getRemoteDirectory().uploadMergedSegmentMetadata(
+            uploadedSegmentsList,
+            segmentInfosSnapshot,
+            indexShard.store().directory(),
+            indexShard.computeReplicationSegmentCheckpoint(segmentCommitInfo),
+            indexShard.getNodeId() // required?
+        );
+        logger.info("#### uploading metadata files complete.");
+
+        logger.info("#### notifying replicas and waiting for response.");
+        notifyReplicas(activeReplicaNodes, mergedSegment, segmentCommitInfo);
+        logger.info("#### warm complete.");
+        indexShard.getRemoteDirectory().moveMergedSegmentsToSegmentsUploadedToRemoteStore(
+            uploadedSegmentsList
+        );
+        uploadedSegmentsList.forEach(segment -> {
+            logger.info("Unregistering {}", segment);
+            MergedSegmentRegistry.getInstance().unregisterMergedSegment(segment);
+        });
+    }
+
+    private void notifyReplicas(List<DiscoveryNode> activeReplicaNodes, ReplicationSegmentCheckpoint checkpoint, SegmentCommitInfo segmentCommitInfo) {
+        PublishMergedSegmentRequest request = new PublishMergedSegmentRequest(checkpoint);
+
         CountDownLatch countDownLatch = new CountDownLatch(activeReplicaNodes.size());
         AtomicInteger successfulCount = new AtomicInteger(0);
         AtomicInteger failureCount = new AtomicInteger(0);
@@ -146,14 +182,14 @@ public class RemoteStoreMergedSegmentWarmer implements IndexWriter.IndexReaderWa
         }
     }
 
-    List<RemoteSegmentStoreDirectory.UploadedSegmentMetadata> uploadNewSegments(
+    Map<String, UploadedSegmentMetadata> uploadNewSegments(
         Collection<String> localSegmentsPostMerge,
         Version version,
         ReplicationSegmentCheckpoint checkpoint
     ) {
         RemoteSegmentStoreDirectory remoteSegmentStoreDirectory = indexShard.getRemoteDirectory();
         Directory storeDirectory = indexShard.store().directory();
-        Map<String, RemoteSegmentStoreDirectory.UploadedSegmentMetadata> uploadedSegmentMetadata = new HashMap<>();
+        Map<String, UploadedSegmentMetadata> uploadedSegmentMetadata = new HashMap<>();
         ActionListener<Void> aggregatedListener = ActionListener.wrap(resp -> {
             logger.info("@ Listener: " + resp);
         }, ex -> {
@@ -166,12 +202,12 @@ public class RemoteStoreMergedSegmentWarmer implements IndexWriter.IndexReaderWa
         localSegmentsPostMerge.forEach(segment -> {
             logger.debug(" Copying over segment {} to remote store", segment);
             remoteSegmentStoreDirectory.copyFrom(storeDirectory, segment, IOContext.DEFAULT, aggregatedListener, true);
-            RemoteSegmentStoreDirectory.UploadedSegmentMetadata metadata = remoteSegmentStoreDirectory.getSegmentsUploadedToRemoteStore().get(segment);
+            UploadedSegmentMetadata metadata = remoteSegmentStoreDirectory.getMergedSegmentsUploadedToRemoteStore().get(segment);
             metadata.setWrittenByMajor(version.major);
             uploadedSegmentMetadata.put(segment, metadata);
         });
 
 
-        return null;
+        return uploadedSegmentMetadata;
     }
 }

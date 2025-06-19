@@ -31,6 +31,7 @@ import org.opensearch.common.logging.Loggers;
 import org.opensearch.common.lucene.store.ByteArrayIndexInput;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.index.shard.ShardId;
+import org.opensearch.index.MergedSegmentRegistry;
 import org.opensearch.index.remote.RemoteStorePathStrategy;
 import org.opensearch.index.remote.RemoteStoreUtils;
 import org.opensearch.index.store.lockmanager.FileLockInfo;
@@ -103,6 +104,8 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
      */
     private Map<String, UploadedSegmentMetadata> segmentsUploadedToRemoteStore;
 
+    private Map<String, UploadedSegmentMetadata> mergedSegmentsUploadedToRemoteStore;
+
     private static final VersionedCodecStreamWrapper<RemoteSegmentMetadata> metadataStreamWrapper = new VersionedCodecStreamWrapper<>(
         new RemoteSegmentMetadataHandlerFactory(),
         RemoteSegmentMetadata.VERSION_ONE,
@@ -114,6 +117,8 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
 
     private final Logger logger;
 
+    final Object LOCK = new Object();
+
     /**
      * AtomicBoolean that ensures only one staleCommitDeletion activity is scheduled at a time.
      * Visible for testing
@@ -121,6 +126,7 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
     protected final AtomicBoolean canDeleteStaleCommits = new AtomicBoolean(true);
 
     private final AtomicLong metadataUploadCounter = new AtomicLong(0);
+    private final AtomicLong mergedSegmentUploadCounter = new AtomicLong(0);
 
     public static final int METADATA_FILES_TO_FETCH = 10;
 
@@ -157,6 +163,7 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
         } else {
             this.segmentsUploadedToRemoteStore = new ConcurrentHashMap<>();
         }
+        this.mergedSegmentsUploadedToRemoteStore = new ConcurrentHashMap<>();
         logger.debug("Initialisation of remote segment metadata completed");
         return remoteSegmentMetadata;
     }
@@ -349,6 +356,7 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
     public static class MetadataFilenameUtils {
         public static final String SEPARATOR = "__";
         public static final String METADATA_PREFIX = "metadata";
+        public static final String MERGED_SEGMENT_METADATA_PREFIX = "merged_segment_" + METADATA_PREFIX + SEPARATOR;
 
         static String getMetadataFilePrefixForCommit(long primaryTerm, long generation) {
             return String.join(
@@ -394,6 +402,39 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
                 primaryTerm,
                 generation,
                 translogGeneration,
+                uploadCounter,
+                metadataVersion,
+                nodeId,
+                System.currentTimeMillis()
+            );
+        }
+
+        public static String getMergedSegmentMetadataFilename(
+            long primaryTerm,
+            long uploadCounter,
+            long metadataVersion,
+            String nodeId,
+            long creationTs
+        ) {
+            return String.join(
+                SEPARATOR,
+                MERGED_SEGMENT_METADATA_PREFIX,
+                RemoteStoreUtils.invertLong(primaryTerm),
+                RemoteStoreUtils.invertLong(uploadCounter),
+                String.valueOf(Objects.hash(nodeId)),
+                RemoteStoreUtils.invertLong(creationTs),
+                String.valueOf(metadataVersion)
+            );
+        }
+
+        public static String getMergedSegmentMetadataFilename(
+            long primaryTerm,
+            long uploadCounter,
+            int metadataVersion,
+            String nodeId
+        ) {
+            return getMergedSegmentMetadataFilename(
+                primaryTerm,
                 uploadCounter,
                 metadataVersion,
                 nodeId,
@@ -639,8 +680,23 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
     }
 
     private void postUpload(Directory from, String src, String remoteFilename, String checksum) throws IOException {
+        logger.info("$$$$ PostUpload for file {} to remote segment store", remoteFilename);
+        logger.info("$$$$ typeof from: " + from.getClass().getSimpleName());
         UploadedSegmentMetadata segmentMetadata = new UploadedSegmentMetadata(src, remoteFilename, checksum, from.fileLength(src));
+        logger.info("MergedSegmentRegistry:" + MergedSegmentRegistry.getInstance().get());
+        if (MergedSegmentRegistry.getInstance().isMergedSegment(src)) {
+            mergedSegmentsUploadedToRemoteStore.put(src, segmentMetadata);
+            return;// should return here?
+        }
         segmentsUploadedToRemoteStore.put(src, segmentMetadata);
+    }
+
+    public void moveMergedSegmentsToSegmentsUploadedToRemoteStore(Collection<String> segments) throws IOException {
+        for (String segment : segments) {
+            segmentsUploadedToRemoteStore.put(segment, mergedSegmentsUploadedToRemoteStore.get(segment));
+            mergedSegmentsUploadedToRemoteStore.remove(segment);
+            logger.info("Moved file {} to segmentsUploadedToRemoteStore", segment);
+        }
     }
 
     /**
@@ -734,6 +790,67 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
     }
 
     /**
+     * Upload merged segment metadata file
+     *
+     * @param segmentFiles         segment files that are part of the shard at the time of the latest refresh
+     * @param segmentInfosSnapshot SegmentInfos bytes to store as part of metadata file
+     * @param storeDirectory instance of local directory to temporarily create metadata file before upload
+     * @param replicationCheckpoint ReplicationCheckpoint of primary shard
+     * @param nodeId node id
+     * @throws IOException in case of I/O error while uploading the metadata file
+     */
+    public void uploadMergedSegmentMetadata(
+        Collection<String> segmentFiles,
+        SegmentInfos segmentInfosSnapshot,
+        Directory storeDirectory,
+        ReplicationCheckpoint replicationCheckpoint,
+        String nodeId
+    ) throws IOException {
+        synchronized (LOCK) {
+            String metadataFilename = MetadataFilenameUtils.getMergedSegmentMetadataFilename(
+                replicationCheckpoint.getPrimaryTerm(),
+                metadataUploadCounter.incrementAndGet(),
+                RemoteSegmentMetadata.CURRENT_VERSION,
+                nodeId
+            );
+            try {
+                try (IndexOutput indexOutput = storeDirectory.createOutput(metadataFilename, IOContext.DEFAULT)) {
+                    Map<String, Integer> segmentToLuceneVersion = getSegmentToLuceneVersion(segmentFiles, segmentInfosSnapshot);
+                    Map<String, String> uploadedSegments = new HashMap<>();
+                    for (String file : segmentFiles) {
+                        if (mergedSegmentsUploadedToRemoteStore.containsKey(file)) {
+                            UploadedSegmentMetadata metadata = mergedSegmentsUploadedToRemoteStore.get(file);
+                            metadata.setWrittenByMajor(segmentToLuceneVersion.get(metadata.originalFilename));
+                            uploadedSegments.put(file, metadata.toString());
+                        } else {
+                            throw new NoSuchFileException(file);
+                        }
+                    }
+
+                    ByteBuffersDataOutput byteBuffersIndexOutput = new ByteBuffersDataOutput();
+                    segmentInfosSnapshot.write(
+                        new ByteBuffersIndexOutput(byteBuffersIndexOutput, "Snapshot of SegmentInfos", "SegmentInfos")
+                    );
+                    byte[] segmentInfoSnapshotByteArray = byteBuffersIndexOutput.toArrayCopy();
+
+                    metadataStreamWrapper.writeStream(
+                        indexOutput,
+                        new RemoteSegmentMetadata(
+                            RemoteSegmentMetadata.fromMapOfStrings(uploadedSegments),
+                            segmentInfoSnapshotByteArray,
+                            replicationCheckpoint
+                        )
+                    );
+                }
+                storeDirectory.sync(Collections.singleton(metadataFilename));
+                remoteMetadataDirectory.copyFrom(storeDirectory, metadataFilename, metadataFilename, IOContext.DEFAULT);
+            } finally {
+                tryAndDeleteLocalFile(metadataFilename, storeDirectory);
+            }
+        }
+    }
+
+    /**
      * Parses the provided SegmentInfos to retrieve a mapping of the provided segment files to
      * the respective Lucene major version that wrote the segments
      *
@@ -743,10 +860,13 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
      */
     private Map<String, Integer> getSegmentToLuceneVersion(Collection<String> segmentFiles, SegmentInfos segmentInfosSnapshot) {
         Map<String, Integer> segmentToLuceneVersion = new HashMap<>();
+        logger.info("SegmentCommitInfo: {}", segmentInfosSnapshot.toString());
         for (SegmentCommitInfo segmentCommitInfo : segmentInfosSnapshot) {
             SegmentInfo info = segmentCommitInfo.info;
             Set<String> segFiles = info.files();
+            logger.info("segFiles {}", segFiles);
             for (String file : segFiles) {
+                logger.info("From getSegmentToLuceneVersion :: file: {} :: version: {}", file, info.getVersion().major);
                 segmentToLuceneVersion.put(file, info.getVersion().major);
             }
         }
@@ -762,7 +882,7 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
                 }
             }
         }
-
+        logger.info("segmentToLuceneVersion {}", segmentToLuceneVersion);
         return segmentToLuceneVersion;
     }
 
@@ -808,6 +928,10 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
     public Map<String, UploadedSegmentMetadata> getSegmentsUploadedToRemoteStore() {
         return Collections.unmodifiableMap(this.segmentsUploadedToRemoteStore);
     }
+
+    public Map<String, UploadedSegmentMetadata> getMergedSegmentsUploadedToRemoteStore() {
+        return Collections.unmodifiableMap(this.mergedSegmentsUploadedToRemoteStore);
+    } {}
 
     // Visible for testing
     Set<String> getMetadataFilesToFilterActiveSegments(

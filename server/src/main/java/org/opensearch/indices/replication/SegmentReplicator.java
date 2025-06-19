@@ -422,7 +422,7 @@ public class SegmentReplicator {
         return onGoingMergedSegmentReplications.get(id);
     }
 
-    ReplicationCollection.ReplicationRef<MergedSegmentReplicationTarget> getMergeReplicationRef(long id, ShardId shardId) {
+    ReplicationCollection.ReplicationRef<MergedSegmentReplicationTarget>  getMergeReplicationRef(long id, ShardId shardId) {
         return onGoingMergedSegmentReplications.getSafe(id, shardId);
     }
 }
