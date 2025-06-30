@@ -8,24 +8,25 @@
 
 package org.opensearch.indices.replication;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.opensearch.index.store.RemoteSegmentStoreDirectory.UploadedSegmentMetadata;
 import reactor.util.annotation.NonNull;
 
+import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * TODO@kheraadi: Simplify this
- * Usages:
- * 1. Used by GC to exclude merged segment files for deletion
- * 2. Used to track remote store segment file names (remove this)
- *
- */
+ * Registry to track active merge segments and their metadata.
+ * This class is implemented as a singleton and provides methods to register, update metadata,
+ * and unregister segment files that are being merged. It also maintains a mapping between
+ * local segment filenames and their corresponding uploaded segment metadata.
+ * */
 public class ActiveMergesSegmentRegistry {
-    private final Map<String, String> myMergedSegments = new ConcurrentHashMap<>();
-    private static final String PENDING_REMOTE_FILE_NAME = "PENDING_REMOTE_FILE_NAME";
+    private final Map<String, UploadedSegmentMetadata> segmentMetadataMap = new ConcurrentHashMap<>();
+    private final Set<String> filenameRegistry = ConcurrentHashMap.newKeySet();
+    private final ReentrantLock lock = new ReentrantLock();
 
     private static class HOLDER {
         private static final ActiveMergesSegmentRegistry INSTANCE = new ActiveMergesSegmentRegistry();
@@ -37,53 +38,78 @@ public class ActiveMergesSegmentRegistry {
         return HOLDER.INSTANCE;
     }
 
-    public void updateRemoteSegmentFileName(@NonNull String localSegmentFileName, @NonNull String remoteSegmentFileName) {
-        if (contains(localSegmentFileName) && PENDING_REMOTE_FILE_NAME.equals(getExistingRemoteSegmentFileName(localSegmentFileName)) == false){
-            // This should never happen
-            if (remoteSegmentFileName.equals(getExistingRemoteSegmentFileName(localSegmentFileName))) {
-                return;
+    /**
+     * Registers a segment file. Throws exception if already registered.
+     * @param localSegmentFilename Segment filename in the local store
+     */
+    public void register(@NonNull String localSegmentFilename) {
+        lock.lock();
+        try {
+            if (contains(localSegmentFilename)){
+                throw new IllegalArgumentException(localSegmentFilename + " is already registered. Cannot reregister.");
             }
-            throw new IllegalArgumentException("Segment " + localSegmentFileName + " is already registered as " + getExistingRemoteSegmentFileName(localSegmentFileName) + ". Called with " + remoteSegmentFileName);
+            filenameRegistry.add(localSegmentFilename);
+        } finally {
+            lock.unlock();
         }
-        myMergedSegments.put(localSegmentFileName, remoteSegmentFileName);
     }
 
-    public void register(@NonNull String localSegmentFileName) {
-        if (contains(localSegmentFileName)){
-            if(PENDING_REMOTE_FILE_NAME.equals(getExistingRemoteSegmentFileName(localSegmentFileName))) {
-                return;
+    /**
+     * Adds {@link UploadedSegmentMetadata} for a registered segment file. Throws an error if the file is not registered.
+     * @param localSegmentFilename Segment filename in the local store
+     * @param metadata {@link UploadedSegmentMetadata} for the segment file
+     */
+    public void updateMetadata(@NonNull String localSegmentFilename, @NonNull UploadedSegmentMetadata metadata) {
+        lock.lock();
+        try {
+            if (contains(localSegmentFilename) == false) {
+                throw new IllegalArgumentException("Segment " + localSegmentFilename + " is not registered");
             }
-            throw new IllegalArgumentException(localSegmentFileName + ": " + getExistingRemoteSegmentFileName(localSegmentFileName) + " already registered. Cannot reregister.");
+            segmentMetadataMap.put(localSegmentFilename, metadata);
+            filenameRegistry.add(metadata.getUploadedFilename());
+        } finally {
+            lock.unlock();
         }
-
-        myMergedSegments.put(localSegmentFileName, PENDING_REMOTE_FILE_NAME);
     }
 
-    public void unregister(@NonNull String segmentFileName) {
-        myMergedSegments.remove(segmentFileName);
-    }
-
-    public boolean contains(@NonNull String segmentFileName) {
-        return myMergedSegments.containsKey(segmentFileName);
-    }
-
-    public String getExistingRemoteSegmentFileName(@NonNull String localSegmentFileName) {
-        if (contains(localSegmentFileName) == false) {
-            // This should never happen
-            throw new IllegalArgumentException("Segment " + localSegmentFileName + " is not registered");
+    /**
+     * Unregisters a segment file from the registry.
+     * @param segmentFilename Segment filename in local store
+     */
+    public void unregister(@NonNull String segmentFilename) {
+        lock.lock();
+        try {
+            if (segmentMetadataMap.containsKey(segmentFilename)) {
+                String remoteFilename = segmentMetadataMap.get(segmentFilename).getUploadedFilename();
+                filenameRegistry.remove(remoteFilename);
+            }
+            filenameRegistry.remove(segmentFilename);
+            segmentMetadataMap.remove(segmentFilename);
+        } finally {
+            lock.unlock();
         }
-
-        return myMergedSegments.get(localSegmentFileName);
     }
 
-    public boolean canDelete(@NonNull String segmentFileName) {
-        String originalFileName = getOriginalFileName(segmentFileName);
-        return contains(originalFileName) &&
-            segmentFileName.equals(getExistingRemoteSegmentFileName(originalFileName));
+    public boolean contains(@NonNull String segmentFilename) {
+        return filenameRegistry.contains(segmentFilename);
     }
 
-    private String getOriginalFileName(@NonNull String remoteSegmentFileName) {
-        String originalFileName = remoteSegmentFileName.split("__")[0];
-        return originalFileName;
+    public String getExistingRemoteSegmentFilename(@NonNull String localSegmentFilename) {
+        if (segmentMetadataMap.containsKey(localSegmentFilename) == false) {
+            throw new IllegalArgumentException("Metadata for segment " + localSegmentFilename + " is not available.");
+        }
+        return segmentMetadataMap.get(localSegmentFilename).getUploadedFilename();
+    }
+
+    public boolean canDelete(@NonNull String segmentFilename) {
+        return contains(segmentFilename) == false;
+    }
+
+    public Map<String, UploadedSegmentMetadata> segmentMetadataMap() {
+        return Collections.unmodifiableMap(segmentMetadataMap);
+    }
+
+    public UploadedSegmentMetadata getMetadata(String localSegmentFilename){
+        return segmentMetadataMap.get(localSegmentFilename);
     }
 }

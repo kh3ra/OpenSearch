@@ -145,7 +145,7 @@ public abstract class AbstractPublishCheckpointAction<
                     public void handleResponse(ReplicationResponse response) {
                         try {
                             timer.stop();
-                            logger.debug(
+                            logger.info(
                                 () -> new ParameterizedMessage(
                                     "[shardId {}] Completed publishing checkpoint [{}], timing: {}",
                                     indexShard.shardId().getId(),
@@ -164,7 +164,7 @@ public abstract class AbstractPublishCheckpointAction<
                     public void handleException(TransportException e) {
                         try {
                             timer.stop();
-                            logger.debug(
+                            logger.info(
                                 "[shardId {}] Failed to publish checkpoint [{}], timing: {}",
                                 indexShard.shardId().getId(),
                                 checkpoint,
@@ -213,12 +213,12 @@ public abstract class AbstractPublishCheckpointAction<
                         e
                     );
                 }
-            }
+        }
         }
     }
 
     @Override
-    final protected void shardOperationOnReplica(ReplicaRequest shardRequest, IndexShard replica, ActionListener<ReplicaResult> listener) {
+    protected void shardOperationOnReplica(ReplicaRequest shardRequest, IndexShard replica, ActionListener<ReplicaResult> listener) {
         Objects.requireNonNull(shardRequest);
         Objects.requireNonNull(replica);
         ActionListener.completeWith(listener, () -> {

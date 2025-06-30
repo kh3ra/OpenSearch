@@ -710,7 +710,7 @@ public class SegmentReplicationTargetService extends AbstractLifecycleComponent 
                     }
                 });
                 try {
-                    latch.await();
+                    latch.await(); // @TODO@kheraadi: add a timeout here:: mergedSegmentTimeout - timeTakenToUpload
                 } catch (InterruptedException e) {
                     logger.warn(
                         () -> new ParameterizedMessage("Interrupted while waiting for pre copy merged segment [{}]", receivedCheckpoint),

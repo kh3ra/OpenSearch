@@ -14,6 +14,7 @@ import org.apache.lucene.store.IOContext;
 import org.opensearch.action.support.GroupedActionListener;
 import org.opensearch.action.support.PlainActionFuture;
 import org.opensearch.common.Nullable;
+import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.common.annotation.PublicApi;
 import org.opensearch.common.logging.Loggers;
 import org.opensearch.common.util.CancellableThreads;
@@ -40,6 +41,9 @@ public final class RemoteStoreFileDownloader {
     private final Logger logger;
     private final ThreadPool threadPool;
     private final RecoverySettings recoverySettings;
+
+    @ExperimentalApi
+    public record FileCopySpec (String localFilename, String remoteFilename, Long fileLength) {}
 
     public RemoteStoreFileDownloader(ShardId shardId, ThreadPool threadPool, RecoverySettings recoverySettings) {
         this.logger = Loggers.getLogger(RemoteStoreFileDownloader.class, shardId);
@@ -105,16 +109,46 @@ public final class RemoteStoreFileDownloader {
         }
     }
 
-    private void downloadInternal(
+    // TODO@kheraadi: Fix this
+    public void download1(
+        Directory source,
+        Directory destination,
+        Directory secondDestination,
+        Collection<FileCopySpec> toDownloadSegments,
+        Runnable onFileCompletion
+    ) throws InterruptedException, IOException {
+        final CancellableThreads cancellableThreads = new CancellableThreads();
+        final PlainActionFuture<Void> listener = PlainActionFuture.newFuture();
+        downloadInternal(cancellableThreads, source, destination, secondDestination, toDownloadSegments, onFileCompletion, listener);
+        try {
+            listener.get();
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof RuntimeException) {
+                throw (RuntimeException) e.getCause();
+            } else if (e.getCause() instanceof IOException) {
+                throw (IOException) e.getCause();
+            }
+            throw new RuntimeException(e);
+        } catch (InterruptedException e) {
+            // If the blocking call on the PlainActionFuture itself is interrupted, then we must
+            // cancel the asynchronous work we were waiting on
+            cancellableThreads.cancel(e.getMessage());
+            Thread.currentThread().interrupt();
+            throw e;
+        }
+    }
+
+
+    private <T> void downloadInternal(
         CancellableThreads cancellableThreads,
         Directory source,
         Directory destination,
         @Nullable Directory secondDestination,
-        Collection<String> toDownloadSegments,
+        Collection<T> toDownloadSegments,
         Runnable onFileCompletion,
         ActionListener<Void> listener
     ) {
-        final Queue<String> queue = new ConcurrentLinkedQueue<>(toDownloadSegments);
+        final Queue<T> queue = new ConcurrentLinkedQueue<>(toDownloadSegments);
         // Choose the minimum of:
         // - number of files to download
         // - max thread pool size
@@ -130,29 +164,37 @@ public final class RemoteStoreFileDownloader {
         }
     }
 
-    private void copyOneFile(
+    private <T> void copyOneFile(
         CancellableThreads cancellableThreads,
         Directory source,
         Directory destination,
         @Nullable Directory secondDestination,
-        Queue<String> queue,
+        Queue<T> queue,
         Runnable onFileCompletion,
         ActionListener<Void> listener
     ) {
-        final String file = queue.poll();
+        final T file = queue.poll();
         if (file == null) {
             // Queue is empty, so notify listener we are done
             listener.onResponse(null);
         } else {
+            String fileSrc, fileDest;
+            if (file instanceof FileCopySpec) {
+                FileCopySpec spec = ((FileCopySpec) file);
+                fileSrc = spec.remoteFilename();
+                fileDest = spec.localFilename();
+            } else {
+                fileSrc = fileDest = (String) file;
+            }
             threadPool.executor(ThreadPool.Names.REMOTE_RECOVERY).submit(() -> {
                 logger.trace("Downloading file {}", file);
                 try {
                     cancellableThreads.executeIO(() -> {
-                        destination.copyFrom(source, file, file, IOContext.DEFAULT);
-                        logger.trace("Downloaded file {} of size {}", file, destination.fileLength(file));
+                        destination.copyFrom(source, fileSrc, fileDest, IOContext.DEFAULT);
+                        logger.trace("Downloaded file {} of size {}", file, destination.fileLength(fileDest));
                         onFileCompletion.run();
                         if (secondDestination != null) {
-                            secondDestination.copyFrom(destination, file, file, IOContext.DEFAULT);
+                            secondDestination.copyFrom(destination, fileSrc, fileDest, IOContext.DEFAULT);
                         }
                     });
                 } catch (Exception e) {

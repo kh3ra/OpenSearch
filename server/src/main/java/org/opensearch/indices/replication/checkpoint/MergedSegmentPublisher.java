@@ -29,7 +29,7 @@ public class MergedSegmentPublisher {
         this.publishAction = Objects.requireNonNull(publishAction);
     }
 
-    public void publish(IndexShard indexShard, MergedSegmentCheckpoint checkpoint) {
+    public void publish(IndexShard indexShard, ReplicationCheckpoint checkpoint) {
         publishAction.publish(indexShard, checkpoint);
     }
 

@@ -10,16 +10,19 @@ package org.opensearch.indices.replication.checkpoint;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.replication.ReplicationResponse;
 import org.opensearch.cluster.action.shard.ShardStateAction;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.UploadListener;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.index.shard.IndexShard;
+import org.opensearch.index.shard.RemoteStoreUploaderService;
 import org.opensearch.indices.IndicesService;
 import org.opensearch.indices.replication.ActiveMergesSegmentRegistry;
 import org.opensearch.indices.replication.SegmentReplicationTargetService;
@@ -28,6 +31,7 @@ import org.opensearch.transport.TransportService;
 
 import java.util.Collection;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -72,39 +76,35 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
 
     @Override
     protected void doReplicaOperation(RemoteStorePublishMergedSegmentRequest shardRequest, IndexShard replica) {
-
+        if (shardRequest.getMergedSegment().getShardId().equals(replica.shardId())) {
+            replicationService.onNewMergedSegmentCheckpoint(shardRequest.getMergedSegment(), replica);
+        }
     }
 
     @Override
     protected void shardOperationOnPrimary(RemoteStorePublishMergedSegmentRequest shardRequest, IndexShard primary, ActionListener<PrimaryResult<RemoteStorePublishMergedSegmentRequest, ReplicationResponse>> listener) {
-
+        ActionListener.completeWith(listener, () -> new PrimaryResult<>(shardRequest, new ReplicationResponse()));
     }
+
 
     @Override
     public void publish(IndexShard indexShard, ReplicationCheckpoint checkpoint) {
         assert checkpoint instanceof RemoteStoreMergedSegmentCheckpoint;
         RemoteStoreMergedSegmentCheckpoint mergedSegmentCheckpoint = (RemoteStoreMergedSegmentCheckpoint) checkpoint;
-
         publishMergedSegmentsToRemoteStore(indexShard, mergedSegmentCheckpoint);
-        logger.info("RemoteFileNames at {}#publish {}", getClass().getName(), mergedSegmentCheckpoint).getLocalToRemoteSegmentFileNameMap());
         doPublish(indexShard,
             checkpoint,
-            new RemoteStorePublishMergedSegmentRequest((RemoteStoreMergedSegmentCheckpoint) checkpoint),
+            new RemoteStorePublishMergedSegmentRequest(mergedSegmentCheckpoint),
             "segrep_publish_merged_segment",
             true,
             indexShard.getRecoverySettings().getMergedSegmentReplicationTimeout()
         );
-        mergedSegmentCheckpoint
-            .getLocalToRemoteSegmentFileNameMap()
-            .keySet()
-            .forEach(activeMergesSegmentRegistry::unregister);
     }
 
     private void publishMergedSegmentsToRemoteStore(IndexShard indexShard, RemoteStoreMergedSegmentCheckpoint checkpoint) {
         RemoteStoreUploaderService remoteStoreUploaderService = getRemoteStoreUploaderService(indexShard);
         Collection<String> segmentsToUpload = checkpoint.getMetadataMap().keySet();
-        logger.info("Publishing segments {} to remote store", segmentsToUpload);
-        registerSegmentsToActiveMerges(segmentsToUpload);
+
         Map<String, Long> segmentsSizeMap = checkpoint
             .getMetadataMap()
             .entrySet()
@@ -113,13 +113,16 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
 
         final CountDownLatch latch = new CountDownLatch(segmentsToUpload.size());
 
+        // TODO@kheraadi: Upload in low priority
         remoteStoreUploaderService.uploadSegments(
             segmentsToUpload,
             segmentsSizeMap,
             new ActionListener<Void>() {
                 @Override
                 public void onResponse(Void unused) {
-                    logger.info("Successfully uploaded segments {} to remote store", checkpoint.getLocalToRemoteSegmentFileNameMap());
+                    if(logger.isTraceEnabled() == true) {
+                        logger.trace("Successfully uploaded segments {} to remote store", segmentsToUpload);
+                    }
                 }
 
                 @Override
@@ -132,15 +135,14 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
             (x) -> new UploadListener() {
                 @Override
                 public void beforeUpload(String file) {
-
+                    activeMergesSegmentRegistry.register(file);
                 }
 
                 @Override
                 public void onSuccess(String file) {
-                    logger.info("Uploaded {}", file);
-                    checkpoint.addRemoteSegmentFileName(
+                    checkpoint.updateLocalToRemoteSegmentFilenameMap(
                         file,
-                        activeMergesSegmentRegistry.getExistingRemoteSegmentFileName(file)
+                        activeMergesSegmentRegistry.getExistingRemoteSegmentFilename(file)
                     );
                     latch.countDown();
                 }
@@ -174,11 +176,4 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
             indexShard.getRemoteDirectory()
         );
     }
-
-    private void registerSegmentsToActiveMerges(Collection<String> segmentsToUpload) {
-        logger.info("Registering segments to active merges: {}", segmentsToUpload);
-        segmentsToUpload.forEach(activeMergesSegmentRegistry::register);
-        logger.info("ActiveMergesSegmentsRegistry: " + activeMergesSegmentsRegistry.mergedSegments().toString());
-    }
-
 }

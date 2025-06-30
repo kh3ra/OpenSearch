@@ -8,6 +8,7 @@
 
 package org.opensearch.indices.replication.checkpoint;
 
+import org.opensearch.common.Nullable;
 import org.opensearch.common.annotation.ExperimentalApi;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -17,6 +18,8 @@ import org.opensearch.index.seqno.SequenceNumbers;
 import org.opensearch.index.store.StoreFileMetadata;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -28,7 +31,7 @@ import java.util.Objects;
 @ExperimentalApi
 public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
     private final String segmentName;
-    private final String remoteStorePath;
+    private final Map<String, String> localToRemoteSegmentFilenameMap;
 
     public RemoteStoreMergedSegmentCheckpoint(
         ShardId shardId,
@@ -37,32 +40,24 @@ public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
         String codec,
         Map<String, StoreFileMetadata> metadataMap,
         String segmentName,
-        String remoteStorePath
+        @Nullable Map<String, String> localToRemoteSegmentFilenameMap
     ) {
         super(shardId, primaryTerm, SequenceNumbers.NO_OPS_PERFORMED, SequenceNumbers.NO_OPS_PERFORMED, length, codec, metadataMap);
         this.segmentName = segmentName;
-        this.remoteStorePath = remoteStorePath;
+        this.localToRemoteSegmentFilenameMap = localToRemoteSegmentFilenameMap == null ? new HashMap<>() : localToRemoteSegmentFilenameMap;
     }
 
     public RemoteStoreMergedSegmentCheckpoint(StreamInput in) throws IOException {
         super(in);
-        segmentName = in.readString();
-        remoteStorePath = in.readString();
-    }
-
-    public String getSegmentName() {
-        return segmentName;
-    }
-
-    public String getRemoteStorePath() {
-        return remoteStorePath;
+        this.segmentName = in.readString();
+        this.localToRemoteSegmentFilenameMap = in.readMap(StreamInput::readString, StreamInput::readString);
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         super.writeTo(out);
         out.writeString(segmentName);
-        out.writeString(remoteStorePath);
+        out.writeMap(getLocalToRemoteSegmentFilenameMap(), StreamOutput::writeString, StreamOutput::writeString);
     }
 
     @Override
@@ -72,14 +67,13 @@ public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
         RemoteStoreMergedSegmentCheckpoint that = (RemoteStoreMergedSegmentCheckpoint) o;
         return getPrimaryTerm() == that.getPrimaryTerm()
             && segmentName.equals(that.segmentName)
-            && remoteStorePath.equals(that.remoteStorePath)
             && Objects.equals(getShardId(), that.getShardId())
             && getCodec().equals(that.getCodec());
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(getShardId(), getPrimaryTerm(), segmentName, remoteStorePath);
+        return Objects.hash(getShardId(), getPrimaryTerm(), segmentName);
     }
 
     @Override
@@ -90,13 +84,21 @@ public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
             + ", primaryTerm="
             + getPrimaryTerm()
             + ", segmentName="
-            + segmentName
-            + ", remoteStorePath="
-            + remoteStorePath
+            + getSegmentName()
+            + ", localToRemoteSegmentFilenameSize="
+            + getLocalToRemoteSegmentFilenameMap().size()
             + '}';
     }
 
-    public Map<String, String> getLocalToRemoteSegmentFileNameMap() {
-        return null;
+    public Map<String, String> getLocalToRemoteSegmentFilenameMap() {
+        return this.localToRemoteSegmentFilenameMap;
+    }
+
+    public String getSegmentName() {
+        return segmentName;
+    }
+
+    public void updateLocalToRemoteSegmentFilenameMap(String localSegmentFilename, String remoteSegmentFilename) {
+        localToRemoteSegmentFilenameMap.put(localSegmentFilename, remoteSegmentFilename);
     }
 }
