@@ -10,6 +10,7 @@ import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.inject.Provider;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.util.FeatureFlags;
 import org.opensearch.indices.IndicesService;
 import org.opensearch.indices.replication.SegmentReplicationTargetService;
 import org.opensearch.threadpool.ThreadPool;
@@ -49,8 +50,11 @@ public class PublishMergedSegmentActionProvider implements Provider<MergedSegmen
 
     @Override
     public MergedSegmentPublisher.PublishAction get() {
-        // TODO@kheraadi: check if remote store is enabled here
-        if (false) {
+        if (FeatureFlags.isEnabled(FeatureFlags.MERGED_SEGMENT_WARMER_EXPERIMENTAL_SETTING) == false) {
+            return null;
+        }
+        // TODO@kheraadi: FIX THIS
+        if (false) {// || clusterService.localNode().isRemoteStoreNode() == false) {
             return new PublishMergedSegmentAction(
                 settings, transportService, clusterService, indicesService,
                 threadPool, shardStateAction, actionFilters, targetService

@@ -145,7 +145,7 @@ public abstract class AbstractPublishCheckpointAction<
                     public void handleResponse(ReplicationResponse response) {
                         try {
                             timer.stop();
-                            logger.info(
+                            logger.trace(
                                 () -> new ParameterizedMessage(
                                     "[shardId {}] Completed publishing checkpoint [{}], timing: {}",
                                     indexShard.shardId().getId(),
@@ -164,7 +164,7 @@ public abstract class AbstractPublishCheckpointAction<
                     public void handleException(TransportException e) {
                         try {
                             timer.stop();
-                            logger.info(
+                            logger.trace(
                                 "[shardId {}] Failed to publish checkpoint [{}], timing: {}",
                                 indexShard.shardId().getId(),
                                 checkpoint,

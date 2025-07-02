@@ -707,7 +707,6 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
         segments.forEach(segment -> {
             try {
                 if (activeMergesSegmentRegistry.contains(segment) == true) {
-                    // TODO@kheraadi: Do we need to compare the checksum here?
                     String localChecksum = getChecksumOfLocalFile(directory, segment);
                     UploadedSegmentMetadata metadata = activeMergesSegmentRegistry.getMetadata(segment);
                     String storedChecksum = metadata.getChecksum();

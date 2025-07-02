@@ -38,7 +38,7 @@ import java.util.stream.Collectors;
 
 public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckpointAction<RemoteStorePublishMergedSegmentRequest, RemoteStorePublishMergedSegmentRequest>  implements MergedSegmentPublisher.PublishAction {
 
-    public static final String ACTION_NAME = "indices:admin/publish_merged_segment";
+    public static final String ACTION_NAME = "indices:admin/remote_publish_merged_segment";
 
     private final static Logger logger = LogManager.getLogger(RemoteStorePublishMergedSegmentAction.class);
 
@@ -89,8 +89,10 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
 
     @Override
     public void publish(IndexShard indexShard, ReplicationCheckpoint checkpoint) {
-        assert checkpoint instanceof RemoteStoreMergedSegmentCheckpoint;
-        RemoteStoreMergedSegmentCheckpoint mergedSegmentCheckpoint = (RemoteStoreMergedSegmentCheckpoint) checkpoint;
+        if(! (checkpoint instanceof RemoteStoreMergedSegmentCheckpoint mergedSegmentCheckpoint)) {
+            throw new AssertionError("Expected checkpoint to be an instance of " + RemoteStoreMergedSegmentCheckpoint.class);
+        }
+
         publishMergedSegmentsToRemoteStore(indexShard, mergedSegmentCheckpoint);
         doPublish(indexShard,
             checkpoint,

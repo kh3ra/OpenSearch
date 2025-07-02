@@ -190,13 +190,13 @@ public class RemoteStoreReplicationSource implements SegmentReplicationSource {
                 toDownloadSegmentNames.add(
                     new RemoteStoreFileDownloader.FileCopySpec(
                         file,
-                        localToRemoteSegmentFileNameMap.get(file),
-                        checkpoint.getMetadataMap().get(file).length())
+                        localToRemoteSegmentFileNameMap.get(file)
+                    )
                 );
             }
 
             indexShard.getFileDownloader()
-                .download1(
+                .download(
                     indexShard.getRemoteDirectory(),
                     storeDirectory,
                     null,

@@ -51,7 +51,7 @@ import java.util.Objects;
  */
 @ExperimentalApi
 public class MergedSegmentCheckpoint extends ReplicationCheckpoint {
-    private final String segmentName;
+    final String segmentName;
 
     public MergedSegmentCheckpoint(
         ShardId shardId,

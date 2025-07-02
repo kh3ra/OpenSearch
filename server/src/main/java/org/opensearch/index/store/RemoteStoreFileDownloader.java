@@ -43,7 +43,7 @@ public final class RemoteStoreFileDownloader {
     private final RecoverySettings recoverySettings;
 
     @ExperimentalApi
-    public record FileCopySpec (String localFilename, String remoteFilename, Long fileLength) {}
+    public record FileCopySpec (String localFilename, String remoteFilename) {}
 
     public RemoteStoreFileDownloader(ShardId shardId, ThreadPool threadPool, RecoverySettings recoverySettings) {
         this.logger = Loggers.getLogger(RemoteStoreFileDownloader.class, shardId);
@@ -76,16 +76,16 @@ public final class RemoteStoreFileDownloader {
      * @param destination The local directory to copy segment files to
      * @param secondDestination The second remote directory that segment files are
      *                          copied to after being copied to the local directory
-     * @param toDownloadSegments The list of segment files to download
+     * @param toDownloadSegments The list of segment files to download as String or {@link FileCopySpec}
      * @param onFileCompletion A generic runnable that is invoked after each file download.
      *                         Must be thread safe as this may be invoked concurrently from
      *                         different threads.
      */
-    public void download(
+    public <T> void download(
         Directory source,
         Directory destination,
         Directory secondDestination,
-        Collection<String> toDownloadSegments,
+        Collection<T> toDownloadSegments,
         Runnable onFileCompletion
     ) throws InterruptedException, IOException {
         final CancellableThreads cancellableThreads = new CancellableThreads();
@@ -108,36 +108,6 @@ public final class RemoteStoreFileDownloader {
             throw e;
         }
     }
-
-    // TODO@kheraadi: Fix this
-    public void download1(
-        Directory source,
-        Directory destination,
-        Directory secondDestination,
-        Collection<FileCopySpec> toDownloadSegments,
-        Runnable onFileCompletion
-    ) throws InterruptedException, IOException {
-        final CancellableThreads cancellableThreads = new CancellableThreads();
-        final PlainActionFuture<Void> listener = PlainActionFuture.newFuture();
-        downloadInternal(cancellableThreads, source, destination, secondDestination, toDownloadSegments, onFileCompletion, listener);
-        try {
-            listener.get();
-        } catch (ExecutionException e) {
-            if (e.getCause() instanceof RuntimeException) {
-                throw (RuntimeException) e.getCause();
-            } else if (e.getCause() instanceof IOException) {
-                throw (IOException) e.getCause();
-            }
-            throw new RuntimeException(e);
-        } catch (InterruptedException e) {
-            // If the blocking call on the PlainActionFuture itself is interrupted, then we must
-            // cancel the asynchronous work we were waiting on
-            cancellableThreads.cancel(e.getMessage());
-            Thread.currentThread().interrupt();
-            throw e;
-        }
-    }
-
 
     private <T> void downloadInternal(
         CancellableThreads cancellableThreads,
@@ -179,10 +149,9 @@ public final class RemoteStoreFileDownloader {
             listener.onResponse(null);
         } else {
             String fileSrc, fileDest;
-            if (file instanceof FileCopySpec) {
-                FileCopySpec spec = ((FileCopySpec) file);
-                fileSrc = spec.remoteFilename();
-                fileDest = spec.localFilename();
+            if (file instanceof FileCopySpec(String localFilename, String remoteFilename)) {
+                fileSrc = remoteFilename;
+                fileDest = localFilename;
             } else {
                 fileSrc = fileDest = (String) file;
             }

@@ -29,8 +29,7 @@ import java.util.Objects;
  * @opensearch.internal
  */
 @ExperimentalApi
-public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
-    private final String segmentName;
+public class RemoteStoreMergedSegmentCheckpoint extends MergedSegmentCheckpoint {
     private final Map<String, String> localToRemoteSegmentFilenameMap;
 
     public RemoteStoreMergedSegmentCheckpoint(
@@ -42,21 +41,18 @@ public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
         String segmentName,
         @Nullable Map<String, String> localToRemoteSegmentFilenameMap
     ) {
-        super(shardId, primaryTerm, SequenceNumbers.NO_OPS_PERFORMED, SequenceNumbers.NO_OPS_PERFORMED, length, codec, metadataMap);
-        this.segmentName = segmentName;
+        super(shardId, primaryTerm, length, codec, metadataMap, segmentName);
         this.localToRemoteSegmentFilenameMap = localToRemoteSegmentFilenameMap == null ? new HashMap<>() : localToRemoteSegmentFilenameMap;
     }
 
     public RemoteStoreMergedSegmentCheckpoint(StreamInput in) throws IOException {
         super(in);
-        this.segmentName = in.readString();
         this.localToRemoteSegmentFilenameMap = in.readMap(StreamInput::readString, StreamInput::readString);
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         super.writeTo(out);
-        out.writeString(segmentName);
         out.writeMap(getLocalToRemoteSegmentFilenameMap(), StreamOutput::writeString, StreamOutput::writeString);
     }
 
@@ -69,11 +65,6 @@ public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
             && segmentName.equals(that.segmentName)
             && Objects.equals(getShardId(), that.getShardId())
             && getCodec().equals(that.getCodec());
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(getShardId(), getPrimaryTerm(), segmentName);
     }
 
     @Override
@@ -92,10 +83,6 @@ public class RemoteStoreMergedSegmentCheckpoint extends ReplicationCheckpoint {
 
     public Map<String, String> getLocalToRemoteSegmentFilenameMap() {
         return this.localToRemoteSegmentFilenameMap;
-    }
-
-    public String getSegmentName() {
-        return segmentName;
     }
 
     public void updateLocalToRemoteSegmentFilenameMap(String localSegmentFilename, String remoteSegmentFilename) {
