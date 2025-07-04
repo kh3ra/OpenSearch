@@ -25,7 +25,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * */
 public class ActiveMergesSegmentRegistry {
     private final Map<String, UploadedSegmentMetadata> segmentMetadataMap = new ConcurrentHashMap<>();
-    private final Set<String> filenameRegistry = ConcurrentHashMap.newKeySet();
+    final Set<String> filenameRegistry = ConcurrentHashMap.newKeySet(); // package-private for tests
     private final ReentrantLock lock = new ReentrantLock();
 
     private static class HOLDER {

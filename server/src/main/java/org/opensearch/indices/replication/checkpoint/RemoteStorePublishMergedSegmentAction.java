@@ -115,7 +115,7 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
 
         final CountDownLatch latch = new CountDownLatch(segmentsToUpload.size());
 
-        // TODO@kheraadi: Upload in low priority
+        // TODO: Upload in low priority
         remoteStoreUploaderService.uploadSegments(
             segmentsToUpload,
             segmentsSizeMap,
@@ -153,23 +153,21 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
                 public void onFailure(String file) {
                     segmentsToUpload.forEach(activeMergesSegmentRegistry::unregister);
                     /**
-                     * TODO@kheraadi:
-                     *      1. reset ActiveMergesRegistry
-                     *      2. abort merge
+                     * TODO: abort merge
                      */
                 }
             }
         );
         try {
-            if(latch.await(60, TimeUnit.MINUTES) == false) {throw new RuntimeException("Merged segment upload timed out.");}; // TODO@kheraadi: Finalize timeout
+            if(latch.await(60, TimeUnit.MINUTES) == false) {throw new RuntimeException("Merged segment upload timed out.");}; // TODO: Finalize timeout
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
-            // TODO@kheraadi: abort merge properly here
+            // TODO: abort merge properly here
         }
     }
 
     /**
-     * TODO@kheraadi: REBASE ONCE UPLOAD CHANGES ARE COMPLETE
+     * TODO: REBASE ONCE UPLOAD CHANGES ARE COMPLETE
      */
     private RemoteStoreUploaderService getRemoteStoreUploaderService(IndexShard indexShard) {
         return new RemoteStoreUploaderService(

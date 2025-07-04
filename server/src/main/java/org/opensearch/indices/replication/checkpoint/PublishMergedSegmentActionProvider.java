@@ -53,7 +53,7 @@ public class PublishMergedSegmentActionProvider implements Provider<MergedSegmen
         if (FeatureFlags.isEnabled(FeatureFlags.MERGED_SEGMENT_WARMER_EXPERIMENTAL_SETTING) == false) {
             return null;
         }
-        // TODO@kheraadi: FIX THIS
+        // TODO: FIX THIS
         if (false) {// || clusterService.localNode().isRemoteStoreNode() == false) {
             return new PublishMergedSegmentAction(
                 settings, transportService, clusterService, indicesService,

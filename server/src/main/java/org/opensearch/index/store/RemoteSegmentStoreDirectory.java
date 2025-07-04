@@ -725,7 +725,7 @@ public final class RemoteSegmentStoreDirectory extends FilterDirectory implement
     }
 
     private boolean isRemoteStoreFileName(String name) {
-        // TODO@kheraadi: Do we have a better way to check this?
+        // TODO: Do we have a better way to check this?
         return name.contains(SEGMENT_NAME_UUID_SEPARATOR);
     }
 
