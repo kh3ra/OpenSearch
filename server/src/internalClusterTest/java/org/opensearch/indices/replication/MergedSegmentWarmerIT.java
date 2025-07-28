@@ -8,26 +8,19 @@
 
 package org.opensearch.indices.replication;
 
-import org.apache.logging.log4j.Logger;
 import org.opensearch.action.admin.indices.forcemerge.ForceMergeRequest;
-import org.opensearch.action.admin.indices.segments.IndexShardSegments;
 import org.opensearch.action.admin.indices.segments.IndicesSegmentResponse;
-import org.opensearch.action.admin.indices.segments.ShardSegments;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.FeatureFlags;
-import org.opensearch.common.util.set.Sets;
 import org.opensearch.index.IndexSettings;
 import org.opensearch.index.TieredMergePolicyProvider;
-import org.opensearch.index.engine.Segment;
 import org.opensearch.index.store.StoreFileMetadata;
 import org.opensearch.test.OpenSearchIntegTestCase;
 import org.opensearch.test.transport.MockTransportService;
 import org.opensearch.transport.TransportService;
 
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -173,27 +166,5 @@ public class MergedSegmentWarmerIT extends SegmentReplicationIT {
         client().admin().indices().forceMerge(new ForceMergeRequest(INDEX_NAME).maxNumSegments(1)).get();
         final IndicesSegmentResponse response = client().admin().indices().prepareSegments(INDEX_NAME).get();
         assertEquals(1, response.getIndices().get(INDEX_NAME).getShards().values().size());
-    }
-
-    public static void waitForSegmentCount(String indexName, int segmentCount, Logger logger) throws Exception {
-        assertBusy(() -> {
-            Set<String> primarySegments = Sets.newHashSet();
-            Set<String> replicaSegments = Sets.newHashSet();
-            final IndicesSegmentResponse response = client().admin().indices().prepareSegments(indexName).get();
-            for (IndexShardSegments indexShardSegments : response.getIndices().get(indexName).getShards().values()) {
-                for (ShardSegments shardSegment : indexShardSegments.getShards()) {
-                    for (Segment segment : shardSegment.getSegments()) {
-                        if (shardSegment.getShardRouting().primary()) {
-                            primarySegments.add(segment.getName());
-                        } else {
-                            replicaSegments.add(segment.getName());
-                        }
-                    }
-                }
-            }
-            logger.info("primary segments: {}, replica segments: {}", primarySegments, replicaSegments);
-            assertEquals(segmentCount, primarySegments.size());
-            assertEquals(segmentCount, replicaSegments.size());
-        }, 1, TimeUnit.MINUTES);
     }
 }
