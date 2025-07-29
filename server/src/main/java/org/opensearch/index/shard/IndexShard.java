@@ -156,6 +156,7 @@ import org.opensearch.index.mapper.RootObjectMapper;
 import org.opensearch.index.mapper.SourceToParse;
 import org.opensearch.index.mapper.Uid;
 import org.opensearch.index.merge.MergeStats;
+import org.opensearch.index.merge.MergedSegmentWarmerStats;
 import org.opensearch.index.recovery.RecoveryStats;
 import org.opensearch.index.refresh.RefreshStats;
 import org.opensearch.index.remote.RemoteSegmentStats;
@@ -201,7 +202,7 @@ import org.opensearch.indices.recovery.RecoveryListener;
 import org.opensearch.indices.recovery.RecoverySettings;
 import org.opensearch.indices.recovery.RecoveryState;
 import org.opensearch.indices.recovery.RecoveryTarget;
-import org.opensearch.indices.replication.checkpoint.MergeSegmentCheckpoint;
+import org.opensearch.indices.replication.checkpoint.MergedSegmentCheckpoint;
 import org.opensearch.indices.replication.checkpoint.MergedSegmentPublisher;
 import org.opensearch.indices.replication.checkpoint.ReplicationCheckpoint;
 import org.opensearch.indices.replication.checkpoint.SegmentReplicationCheckpointPublisher;
@@ -383,6 +384,16 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     private volatile AsyncShardRefreshTask refreshTask;
     private final ClusterApplierService clusterApplierService;
     private final MergedSegmentPublisher mergedSegmentPublisher;
+
+    // WARMER STATS
+    private final CounterMetric totalWarmInvocationsCount = new CounterMetric();
+    private final CounterMetric totalWarmTimeMillis = new CounterMetric();
+    private final CounterMetric totalWarmFailureCount = new CounterMetric();
+    private final CounterMetric totalBytesUploaded = new CounterMetric();
+    private final CounterMetric totalBytesDownloaded = new CounterMetric();
+    private final CounterMetric totalUploadTimeMillis = new CounterMetric();
+    private final CounterMetric totalDownloadTimeMillis = new CounterMetric();
+    private final CounterMetric ongoingWarms = new CounterMetric();
 
     @InternalApi
     public IndexShard(
@@ -1546,6 +1557,57 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         return mergeStats;
     }
 
+    public MergedSegmentWarmerStats mergedSegmentWarmerStats() {
+        final MergedSegmentWarmerStats stats = new MergedSegmentWarmerStats();
+        stats.add(
+            totalWarmInvocationsCount.count(),
+            totalWarmTimeMillis.count(),
+            totalWarmFailureCount.count(),
+            totalBytesUploaded.count(),
+            totalBytesDownloaded.count(),
+            totalUploadTimeMillis.count(),
+            totalDownloadTimeMillis.count(),
+            ongoingWarms.count()
+        );
+        return stats;
+    }
+
+    public void incrementTotalWarmInvocationsCount() {
+        totalWarmInvocationsCount.inc();
+    }
+
+    public void incrementOngoingWarms() {
+        ongoingWarms.inc();
+    }
+
+    public void decrementOngoingWarms() {
+        ongoingWarms.dec();
+    }
+
+    public void incrementTotalWarmFailureCount() {
+        totalWarmFailureCount.inc();
+    }
+
+    public void addTotalWarmTimeMillis(long time) {
+        totalWarmTimeMillis.inc(time);
+    }
+
+    public void addTotalUploadTimeMillis(long time) {
+        totalUploadTimeMillis.inc(time);
+    }
+
+    public void addTotalDownloadTimeMillis(long time) {
+        totalDownloadTimeMillis.inc(time);
+    }
+
+    public void addTotalBytesUploaded(long bytes) {
+        totalBytesUploaded.inc(bytes);
+    }
+
+    public void addTotalBytesDownloaded(long bytes) {
+        totalBytesDownloaded.inc(bytes);
+    }
+
     public SegmentsStats segmentStats(boolean includeSegmentFileSizes, boolean includeUnloadedSegments) {
         SegmentsStats segmentsStats = getEngine().segmentsStats(includeSegmentFileSizes, includeUnloadedSegments);
         segmentsStats.addBitsetMemoryInBytes(shardBitsetFilterCache.getMemorySizeInBytes());
@@ -1864,19 +1926,20 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     }
 
     /**
-     * Compute {@link MergeSegmentCheckpoint} from a SegmentCommitInfo.
+     * Compute {@link MergedSegmentCheckpoint} from a SegmentCommitInfo.
      * This function fetches a metadata snapshot from the store that comes with an IO cost.
      *
      * @param segmentCommitInfo {@link SegmentCommitInfo} segmentCommitInfo to use to compute.
-     * @return {@link MergeSegmentCheckpoint} Checkpoint computed from the segmentCommitInfo.
+     * @return {@link MergedSegmentCheckpoint} Checkpoint computed from the segmentCommitInfo.
      * @throws IOException When there is an error computing segment metadata from the store.
      */
-    public MergeSegmentCheckpoint computeMergeSegmentCheckpoint(SegmentCommitInfo segmentCommitInfo) throws IOException {
+    public ReplicationCheckpoint computeMergeSegmentCheckpoint(SegmentCommitInfo segmentCommitInfo) throws IOException {
         // Only need to get the file metadata information in segmentCommitInfo and reuse Store#getSegmentMetadataMap.
         SegmentInfos segmentInfos = new SegmentInfos(Version.LATEST.major);
         segmentInfos.add(segmentCommitInfo);
         Map<String, StoreFileMetadata> segmentMetadataMap = store.getSegmentMetadataMap(segmentInfos);
-        return new MergeSegmentCheckpoint(
+
+        return new MergedSegmentCheckpoint(
             shardId,
             getOperationPrimaryTerm(),
             segmentMetadataMap.values().stream().mapToLong(StoreFileMetadata::length).sum(),
