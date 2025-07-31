@@ -592,46 +592,53 @@ public class RestIndicesAction extends AbstractListAction {
         table.addCell("pri.merges.total_time", "default:false;text-align:right;desc:time spent in merges");
 
         table.addCell(
-            "merged_segment_warmer.current",
-            "sibling:pri;alias:mswc,mergesCurrent;default:false;text-align:right;desc:number of current merges"
+            "merged_segment_warmer.total_warm_invocations",
+            "alias:mswtwi,mergedSegmentWarmerTotalWarmInvocations;default:false;text-align:right;desc:UPDATE"
         );
-        table.addCell("pri.merged_segment_warmer.current", "default:false;text-align:right;desc:number of current merges");
+        table.addCell("pri.merged_segment_warmer.total_warm_invocations", "default:false;text-align:right;desc:UPDATE");
 
         table.addCell(
-            "merged_segment_warmer.current_docs",
-            "sibling:pri;alias:mswcd,mergedSegmentWarmerCurrentDocs;default:false;text-align:right;desc:number of current merging docs"
+            "merged_segment_warmer.total_warm_time_millis",
+            "alias:mswtwtm,mergedSegmentWarmerTotalWarmTimeMillis;default:false;text-align:right;desc:UPDATE"
         );
-        table.addCell("pri.merged_segment_warmer.current_docs", "default:false;text-align:right;desc:number of current merging docs");
+        table.addCell("pri.merged_segment_warmer.total_warm_time_millis", "default:false;text-align:right;desc:UPDATE");
 
         table.addCell(
-            "merged_segment_warmer.current_size",
-            "sibling:pri;alias:mswcs,mergedSegmentWarmerCurrentSize;default:false;text-align:right;desc:size of current merges"
+            "merged_segment_warmer.ongoing_warms",
+            "alias:mswow,mergedSegmentWarmerOngoingWarms;default:false;text-align:right;desc:UPDATE"
         );
-        table.addCell("pri.merged_segment_warmer.current_size", "default:false;text-align:right;desc:size of current merges");
+        table.addCell("pri.merged_segment_warmer.ongoing_warms", "default:false;text-align:right;desc:UPDATE");
 
         table.addCell(
-            "merged_segment_warmer.total",
-            "sibling:pri;alias:mswt,mergedSegmentWarmerTotal;default:false;text-align:right;desc:number of completed merge ops"
+            "merged_segment_warmer.total_bytes_downloaded",
+            "alias:mswtbd,mergedSegmentWarmerTotalBytesDownloaded;default:false;text-align:right;desc:UPDATE"
         );
-        table.addCell("pri.merged_segment_warmer.total", "default:false;text-align:right;desc:number of completed merge ops");
+        table.addCell("pri.merged_segment_warmer.total_bytes_downloaded", "default:false;text-align:right;desc:UPDATE");
 
         table.addCell(
-            "merged_segment_warmer.total_docs",
-            "sibling:pri;alias:mswtd,mergedSegmentWarmerTotalDocs;default:false;text-align:right;desc:docs merged"
+            "merged_segment_warmer.total_bytes_uploaded",
+            "alias:mswtbu,mergedSegmentWarmerTotalBytesUploaded;default:false;text-align:right;desc:UPDATE"
         );
-        table.addCell("pri.merged_segment_warmer.total_docs", "default:false;text-align:right;desc:docs merged");
+        table.addCell("pri.merged_segment_warmer.total_bytes_uploaded", "default:false;text-align:right;desc:UPDATE");
 
         table.addCell(
-            "merged_segment_warmer.total_size",
-            "sibling:pri;alias:mswts,mergedSegmentWarmerTotalSize;default:false;text-align:right;desc:size merged"
+            "merged_segment_warmer.total_download_time_millis",
+            "alias:mswtdtm,mergedSegmentWarmerTotalDownloadTimeMillis;default:false;text-align:right;desc:UPDATE"
         );
-        table.addCell("pri.merged_segment_warmer.total_size", "default:false;text-align:right;desc:size merged");
+        table.addCell("pri.merged_segment_warmer.total_download_time_millis", "default:false;text-align:right;desc:UPDATE");
 
         table.addCell(
-            "merged_segment_warmer.total_time",
-            "sibling:pri;alias:mswtt,mergedSegmentWarmerTotalTime;default:false;text-align:right;desc:time spent in merges"
+            "merged_segment_warmer.total_warm_failure_count",
+            "alias:mswtwfc,mergedSegmentWarmerTotalWarmFailureCount;default:false;text-align:right;desc:UPDATE"
         );
-        table.addCell("pri.merged_segment_warmer.total_time", "default:false;text-align:right;desc:time spent in merges");
+        table.addCell("pri.merged_segment_warmer.total_warm_failure_count", "default:false;text-align:right;desc:UPDATE");
+
+        table.addCell(
+            "merged_segment_warmer.total_upload_time_millis",
+            "alias:mswtutm,mergedSegmentWarmerTotalUploadTimeMillis;default:false;text-align:right;desc:UPDATE"
+        );
+        table.addCell("pri.merged_segment_warmer.total_upload_time_millis", "default:false;text-align:right;desc:UPDATE");
+
 
         table.addCell("refresh.total", "sibling:pri;alias:rto,refreshTotal;default:false;text-align:right;desc:total refreshes");
         table.addCell("pri.refresh.total", "default:false;text-align:right;desc:total refreshes");

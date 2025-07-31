@@ -77,8 +77,8 @@ public class MergedSegmentWarmerStats implements Writeable, ToXContentFragment {
         long totalWarmFailureCount,
         long totalBytesUploaded,
         long totalBytesDownloaded,
-        long totalUploadDurationMillis,
-        long totalDownloadDurationMillis,
+        long totalUploadTimeMillis,
+        long totalDownloadTimeMillis,
         long ongoingWarms
     ) {
         this.totalWarmInvocationsCount += totalWarmInvocationsCount;
@@ -86,8 +86,8 @@ public class MergedSegmentWarmerStats implements Writeable, ToXContentFragment {
         this.totalWarmFailureCount += totalWarmFailureCount;
         this.totalBytesUploaded += totalBytesUploaded;
         this.totalBytesDownloaded += totalBytesDownloaded;
-        this.totalUploadTimeMillis += totalUploadDurationMillis;
-        this.totalDownloadTimeMillis += totalDownloadDurationMillis;
+        this.totalUploadTimeMillis += totalUploadTimeMillis;
+        this.totalDownloadTimeMillis += totalDownloadTimeMillis;
         this.ongoingWarms += ongoingWarms;
     }
 
@@ -153,8 +153,8 @@ public class MergedSegmentWarmerStats implements Writeable, ToXContentFragment {
         builder.field(Fields.TOTAL_WARM_FAILURE_COUNT, totalWarmFailureCount);
         builder.humanReadableField(Fields.TOTAL_BYTES_UPLOADED, Fields.TOTAL_BYTES_UPLOADED, new ByteSizeValue(totalBytesUploaded));
         builder.humanReadableField(Fields.TOTAL_BYTES_DOWNLOADED, Fields.TOTAL_BYTES_DOWNLOADED, new ByteSizeValue(totalBytesDownloaded));
-        builder.field(Fields.TOTAL_UPLOAD_DURATION_MILLIS, totalUploadTimeMillis);
-        builder.field(Fields.TOTAL_DOWNLOAD_DURATION_MILLIS, totalDownloadTimeMillis);
+        builder.field(Fields.TOTAL_UPLOAD_TIME_MILLIS, totalUploadTimeMillis);
+        builder.field(Fields.TOTAL_DOWNLOAD_TIME_MILLIS, totalDownloadTimeMillis);
         builder.field(Fields.ONGOING_WARMS, ongoingWarms);
         builder.endObject();
         return builder;
@@ -172,8 +172,8 @@ public class MergedSegmentWarmerStats implements Writeable, ToXContentFragment {
         static final String TOTAL_WARM_FAILURE_COUNT = "total_warm_failure_count";
         static final String TOTAL_BYTES_UPLOADED = "total_bytes_uploaded";
         static final String TOTAL_BYTES_DOWNLOADED = "total_bytes_downloaded";
-        static final String TOTAL_UPLOAD_DURATION_MILLIS = "total_upload_duration_millis";
-        static final String TOTAL_DOWNLOAD_DURATION_MILLIS = "total_download_duration_millis";
+        static final String TOTAL_UPLOAD_TIME_MILLIS = "total_upload_time_millis";
+        static final String TOTAL_DOWNLOAD_TIME_MILLIS = "total_download_time_millis";
         static final String ONGOING_WARMS = "ongoing_warms";
     }
 
