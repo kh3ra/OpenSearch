@@ -216,35 +216,35 @@ public class RestShardsAction extends AbstractListAction {
         table.addCell("merges.total_time", "alias:mtt,mergesTotalTime;default:false;text-align:right;desc:time spent in merges");
 
         table.addCell(
-            "mergedSegmentWarmer.total_warm_invocations",
+            "merged_segment_warmer.total_warm_invocations",
             "alias:mswtwi,mergedSegmentWarmerTotalWarmInvocations;default:false;text-align:right;desc:total invocations of merged segment warmer"
         );
         table.addCell(
-            "mergedSegmentWarmer.total_warm_time_millis",
+            "merged_segment_warmer.total_warm_time_millis",
             "alias:mswtwtm,mergedSegmentWarmerTotalWarmTimeMillis;default:false;text-align:right;desc:UPDATE"
         );
         table.addCell(
-            "mergedSegmentWarmer.ongoing_warms",
+            "merged_segment_warmer.ongoing_warms",
             "alias:mswow,mergedSegmentWarmerOngoingWarms;default:false;text-align:right;desc:UPDATE"
         );
         table.addCell(
-            "mergedSegmentWarmer.total_bytes_downloaded",
+            "merged_segment_warmer.total_bytes_downloaded",
             "alias:mswtbd,mergedSegmentWarmerTotalBytesDownloaded;default:false;text-align:right;desc:UPDATE"
         );
         table.addCell(
-            "mergedSegmentWarmer.total_bytes_uploaded",
+            "merged_segment_warmer.total_bytes_uploaded",
             "alias:mswtbu,mergedSegmentWarmerTotalBytesUploaded;default:false;text-align:right;desc:UPDATE"
         );
         table.addCell(
-            "mergedSegmentWarmer.total_download_time_millis",
+            "merged_segment_warmer.total_download_time_millis",
             "alias:mswtdtm,mergedSegmentWarmerTotalDownloadTimeMillis;default:false;text-align:right;desc:UPDATE"
         );
         table.addCell(
-            "mergedSegmentWarmer.total_warm_failure_count",
+            "merged_segment_warmer.total_warm_failure_count",
             "alias:mswtwfc,mergedSegmentWarmerTotalWarmFailureCount;default:false;text-align:right;desc:UPDATE"
         );
         table.addCell(
-            "mergedSegmentWarmer.total_upload_time_millis",
+            "merged_segment_warmer.total_upload_time_millis",
             "alias:mswtutm,mergedSegmentWarmerTotalUploadTimeMillis;default:false;text-align:right;desc:UPDATE"
         );
 

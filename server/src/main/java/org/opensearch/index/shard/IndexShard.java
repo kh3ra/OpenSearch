@@ -156,6 +156,7 @@ import org.opensearch.index.mapper.RootObjectMapper;
 import org.opensearch.index.mapper.SourceToParse;
 import org.opensearch.index.mapper.Uid;
 import org.opensearch.index.merge.MergeStats;
+import org.opensearch.index.merge.MergedSegmentReplicationTracker;
 import org.opensearch.index.merge.MergedSegmentWarmerStats;
 import org.opensearch.index.recovery.RecoveryStats;
 import org.opensearch.index.refresh.RefreshStats;
@@ -384,16 +385,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     private volatile AsyncShardRefreshTask refreshTask;
     private final ClusterApplierService clusterApplierService;
     private final MergedSegmentPublisher mergedSegmentPublisher;
-
-    // WARMER STATS
-    private final CounterMetric totalWarmInvocationsCount = new CounterMetric();
-    private final CounterMetric totalWarmTimeMillis = new CounterMetric();
-    private final CounterMetric totalWarmFailureCount = new CounterMetric();
-    private final CounterMetric totalBytesUploaded = new CounterMetric();
-    private final CounterMetric totalBytesDownloaded = new CounterMetric();
-    private final CounterMetric totalUploadTimeMillis = new CounterMetric();
-    private final CounterMetric totalDownloadTimeMillis = new CounterMetric();
-    private final CounterMetric ongoingWarms = new CounterMetric();
+    private final MergedSegmentReplicationTracker mergedSegmentReplicationTracker;
 
     @InternalApi
     public IndexShard(
@@ -542,6 +534,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
         this.refreshMutex = Objects.requireNonNull(refreshMutex);
         this.clusterApplierService = clusterApplierService;
         this.mergedSegmentPublisher = mergedSegmentPublisher;
+        this.mergedSegmentReplicationTracker = new MergedSegmentReplicationTracker(shardId(), indexSettings);
         synchronized (this.refreshMutex) {
             if (shardLevelRefreshEnabled) {
                 startRefreshTask();
@@ -1558,54 +1551,11 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     }
 
     public MergedSegmentWarmerStats mergedSegmentWarmerStats() {
-        final MergedSegmentWarmerStats stats = new MergedSegmentWarmerStats();
-        stats.add(
-            totalWarmInvocationsCount.count(),
-            totalWarmTimeMillis.count(),
-            totalWarmFailureCount.count(),
-            totalBytesUploaded.count(),
-            totalBytesDownloaded.count(),
-            totalUploadTimeMillis.count(),
-            totalDownloadTimeMillis.count(),
-            ongoingWarms.count()
-        );
-        return stats;
+        return mergedSegmentReplicationTracker.stats();
     }
 
-    public void incrementTotalWarmInvocationsCount() {
-        totalWarmInvocationsCount.inc();
-    }
-
-    public void incrementOngoingWarms() {
-        ongoingWarms.inc();
-    }
-
-    public void decrementOngoingWarms() {
-        ongoingWarms.dec();
-    }
-
-    public void incrementTotalWarmFailureCount() {
-        totalWarmFailureCount.inc();
-    }
-
-    public void addTotalWarmTimeMillis(long time) {
-        totalWarmTimeMillis.inc(time);
-    }
-
-    public void addTotalUploadTimeMillis(long time) {
-        totalUploadTimeMillis.inc(time);
-    }
-
-    public void addTotalDownloadTimeMillis(long time) {
-        totalDownloadTimeMillis.inc(time);
-    }
-
-    public void addTotalBytesUploaded(long bytes) {
-        totalBytesUploaded.inc(bytes);
-    }
-
-    public void addTotalBytesDownloaded(long bytes) {
-        totalBytesDownloaded.inc(bytes);
+    public MergedSegmentReplicationTracker mergedSegmentReplicationTracker() {
+        return mergedSegmentReplicationTracker;
     }
 
     public SegmentsStats segmentStats(boolean includeSegmentFileSizes, boolean includeUnloadedSegments) {

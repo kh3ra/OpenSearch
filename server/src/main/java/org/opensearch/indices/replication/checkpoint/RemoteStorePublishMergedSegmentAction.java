@@ -85,7 +85,7 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
             long startTime = System.currentTimeMillis();
             replica.getRemoteDirectory().markPendingMergedSegmentsDownload(checkpoint.getLocalToRemoteSegmentFilenameMap());
             replicationService.onNewMergedSegmentCheckpoint(checkpoint, replica);
-            replica.addTotalDownloadTimeMillis(System.currentTimeMillis() - startTime);
+            replica.mergedSegmentReplicationTracker().addTotalDownloadTimeMillis(System.currentTimeMillis() - startTime);
         }
     }
 
@@ -111,7 +111,7 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
         long elapsedTimeMillis = endTimeMillis - startTimeMillis;
         long timeoutMillis = indexShard.getRecoverySettings().getMergedSegmentReplicationTimeout().millis();
         long timeLeftMillis = Math.max(0, timeoutMillis - elapsedTimeMillis);
-        indexShard.addTotalUploadTimeMillis(elapsedTimeMillis);
+        indexShard.mergedSegmentReplicationTracker().addTotalUploadTimeMillis(elapsedTimeMillis);
         if (timeLeftMillis > 0) {
             RemoteStoreMergedSegmentCheckpoint remoteStoreMergedSegmentCheckpoint = new RemoteStoreMergedSegmentCheckpoint(
                 mergedSegmentCheckpoint,
@@ -164,7 +164,7 @@ public class RemoteStorePublishMergedSegmentAction extends AbstractPublishCheckp
             @Override
             public void onSuccess(String file) {
                 localToRemoteStoreFilenames.put(file, indexShard.getRemoteDirectory().getExistingRemoteFilename(file));
-                indexShard.addTotalBytesUploaded(checkpoint.getMetadataMap().get(file).length());
+                indexShard.mergedSegmentReplicationTracker().addTotalBytesUploaded(checkpoint.getMetadataMap().get(file).length());
             }
 
             @Override
