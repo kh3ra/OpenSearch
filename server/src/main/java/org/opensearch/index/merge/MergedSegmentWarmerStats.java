@@ -71,7 +71,7 @@ public class MergedSegmentWarmerStats implements Writeable, ToXContentFragment {
         ongoingWarms = in.readVLong();
     }
 
-    public void add(
+    public synchronized void add(
         long totalWarmInvocationsCount,
         long totalWarmTimeMillis,
         long totalWarmFailureCount,
@@ -100,7 +100,7 @@ public class MergedSegmentWarmerStats implements Writeable, ToXContentFragment {
         addTotals(mergedSegmentWarmerStats);
     }
 
-    public void addTotals(MergedSegmentWarmerStats mergedSegmentWarmerStats) {
+    public synchronized void addTotals(MergedSegmentWarmerStats mergedSegmentWarmerStats) {
         if (mergedSegmentWarmerStats == null) {
             return;
         }
