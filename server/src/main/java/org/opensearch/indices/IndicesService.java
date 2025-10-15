@@ -626,19 +626,14 @@ public class IndicesService extends AbstractLifecycleComponent
                 MergeSchedulerConfig.CLUSTER_MAX_FORCE_MERGE_MB_PER_SEC_SETTING,
                 this::onClusterLevelForceMergeMBPerSecUpdate
             );
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(
-            this::setClusterDefaultMaxThreadAndMergeCount,
-            List.of(
-                MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING,
-                MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING
-                ),
-            MergeSchedulerConfig::validateMaxThreadAndMergeCount
-        );
         clusterService.getClusterSettings()
             .addSettingsUpdateConsumer(
-                CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE_SETTING,
-                this::onClusterDefaultMergeAutoThrottleUpdate
+                this::setClusterDefaultMaxThreadAndMergeCount,
+                List.of(MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING, MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING),
+                MergeSchedulerConfig::validateMaxThreadAndMergeCount
             );
+        clusterService.getClusterSettings()
+            .addSettingsUpdateConsumer(CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE_SETTING, this::onClusterDefaultMergeAutoThrottleUpdate);
 
     }
 
@@ -762,17 +757,19 @@ public class IndicesService extends AbstractLifecycleComponent
         defaultMaxMergeThreadCount = MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.get(settings);
         for (Map.Entry<String, IndexService> entry : indices.entrySet()) {
             IndexService indexService = entry.getValue();
-            if (MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.exists(settings) == false &&
-                MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.exists(settings) == false)
-                indexService.getIndexSettings().getMergeSchedulerConfig().setMaxThreadAndMergeCount(defaultMaxMergeThreadCount, defaultMaxMergeCount);
+            if (MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.exists(settings) == false
+                && MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.exists(settings) == false) indexService.getIndexSettings()
+                    .getMergeSchedulerConfig()
+                    .setMaxThreadAndMergeCount(defaultMaxMergeThreadCount, defaultMaxMergeCount);
         }
     }
 
     private void onClusterDefaultMergeAutoThrottleUpdate(Boolean value) {
         for (Map.Entry<String, IndexService> entry : indices.entrySet()) {
             IndexService indexService = entry.getValue();
-            if (MergeSchedulerConfig.AUTO_THROTTLE_SETTING.exists(settings) == false)
-                indexService.getIndexSettings().getMergeSchedulerConfig().setAutoThrottle(value);
+            if (MergeSchedulerConfig.AUTO_THROTTLE_SETTING.exists(settings) == false) indexService.getIndexSettings()
+                .getMergeSchedulerConfig()
+                .setAutoThrottle(value);
         }
     }
 

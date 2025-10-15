@@ -12,12 +12,10 @@ import org.apache.lucene.codecs.Codec;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.SegmentCommitInfo;
 import org.apache.lucene.index.SegmentInfo;
-import org.apache.lucene.index.SegmentReader;
 import org.apache.lucene.search.Sort;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.tests.store.MockDirectoryWrapper;
 import org.apache.lucene.util.StringHelper;
-import org.mockito.ArgumentMatchers;
 import org.opensearch.Version;
 import org.opensearch.core.common.unit.ByteSizeUnit;
 import org.opensearch.core.common.unit.ByteSizeValue;
@@ -32,6 +30,7 @@ import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
+import org.mockito.ArgumentMatchers;
 import org.mockito.Mock;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -51,6 +50,7 @@ public class MergedSegmentWarmerTests extends OpenSearchTestCase {
     SegmentCommitInfo segmentCommitInfo;
     @Mock
     MergedSegmentTransferTracker mergedSegmentTransferTracker;
+
     @Override
     public void setUp() throws Exception {
         super.setUp();

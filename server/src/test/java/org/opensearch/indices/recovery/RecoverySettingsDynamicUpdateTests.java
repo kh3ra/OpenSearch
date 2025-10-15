@@ -208,10 +208,7 @@ public class RecoverySettingsDynamicUpdateTests extends OpenSearchTestCase {
                 Settings.builder().put(RecoverySettings.INDICES_REPLICATION_MERGES_WARMER_ENABLED_SETTING.getKey(), true).build()
             )
         );
-        assertEquals(
-            "illegal value can't update [indices.replication.merges_warmer_enabled] from [false] to [true]",
-            e.getMessage()
-        );
+        assertEquals("illegal value can't update [indices.replication.merges_warmer_enabled] from [false] to [true]", e.getMessage());
         assertEquals(IllegalArgumentException.class, e.getCause().getClass());
         assertEquals(
             "FeatureFlag opensearch.experimental.feature.merges_warmer.enabled must be enabled to set this property to true.",

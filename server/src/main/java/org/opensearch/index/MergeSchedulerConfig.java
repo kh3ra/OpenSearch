@@ -32,8 +32,6 @@
 
 package org.opensearch.index;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.opensearch.common.annotation.PublicApi;
 import org.opensearch.common.settings.Setting;

@@ -10,7 +10,6 @@ package org.opensearch.index.engine;
 
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
-import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriter.IndexReaderWarmer;
 import org.apache.lucene.index.LeafReader;
 import org.apache.lucene.index.SegmentCommitInfo;
@@ -105,6 +104,7 @@ public class MergedSegmentWarmer implements IndexReaderWarmer {
         assert indexShard.indexSettings().isSegRepLocalEnabled() || indexShard.indexSettings().isRemoteStoreEnabled();
         return ((SegmentReader) leafReader).getSegmentInfo();
     }
+
     // package-private for tests
     boolean shouldWarm(SegmentCommitInfo segmentCommitInfo) throws IOException {
         if (indexShard.getRecoverySettings().isMergedSegmentReplicationWarmerEnabled() == false) {
@@ -120,7 +120,14 @@ public class MergedSegmentWarmer implements IndexReaderWarmer {
         long segmentSize = segmentCommitInfo.sizeInBytes();
         double threshold = indexShard.getRecoverySettings().getMergedSegmentWarmerSegmentSizeThreshold().getBytes();
         if (segmentSize < threshold) {
-            logger.trace(() -> new ParameterizedMessage("Skipping warm for segment {}. SegmentSize {}B is less than the configured threshold {}B.", segmentCommitInfo.info.name, segmentSize, threshold));
+            logger.trace(
+                () -> new ParameterizedMessage(
+                    "Skipping warm for segment {}. SegmentSize {}B is less than the configured threshold {}B.",
+                    segmentCommitInfo.info.name,
+                    segmentSize,
+                    threshold
+                )
+            );
             return false;
         }
 
