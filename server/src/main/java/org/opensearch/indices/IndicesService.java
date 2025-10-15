@@ -72,7 +72,6 @@ import org.opensearch.common.lucene.index.OpenSearchDirectoryReader.DelegatingCa
 import org.opensearch.common.settings.IndexScopedSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Setting.Property;
-import org.opensearch.common.settings.Setting.Validator;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.BigArrays;
@@ -317,7 +316,7 @@ public class IndicesService extends AbstractLifecycleComponent
         "cluster.default.index.merge.scheduler.auto_throttle",
         MergeSchedulerConfig.CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE,
         Property.Dynamic,
-        Property.IndexScope
+        Property.NodeScope
     );
 
     /**
@@ -759,20 +758,20 @@ public class IndicesService extends AbstractLifecycleComponent
     }
 
     private void setClusterDefaultMaxThreadAndMergeCount(Settings settings) {
-        int newMaxMergeCount = MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.get(settings);
-        int newMaxThreadCount = MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.get(settings);
+        defaultMaxMergeCount = MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.get(settings);
+        defaultMaxMergeThreadCount = MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.get(settings);
         for (Map.Entry<String, IndexService> entry : indices.entrySet()) {
             IndexService indexService = entry.getValue();
             if (MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.exists(settings) == false &&
                 MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.exists(settings) == false)
-                indexService.getIndexSettings().getMergeSchedulerConfig().setMaxThreadAndMergeCount(newMaxThreadCount, newMaxMergeCount);
+                indexService.getIndexSettings().getMergeSchedulerConfig().setMaxThreadAndMergeCount(defaultMaxMergeThreadCount, defaultMaxMergeCount);
         }
     }
 
     private void onClusterDefaultMergeAutoThrottleUpdate(Boolean value) {
         for (Map.Entry<String, IndexService> entry : indices.entrySet()) {
             IndexService indexService = entry.getValue();
-            if (MergeSchedulerConfig.AUTO_THROTTLE_SETTING.exists(settings))
+            if (MergeSchedulerConfig.AUTO_THROTTLE_SETTING.exists(settings) == false)
                 indexService.getIndexSettings().getMergeSchedulerConfig().setAutoThrottle(value);
         }
     }

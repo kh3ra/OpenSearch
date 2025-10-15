@@ -46,7 +46,6 @@ import org.opensearch.common.util.FeatureFlags;
 import org.opensearch.common.util.concurrent.OpenSearchExecutors;
 import org.opensearch.core.common.unit.ByteSizeUnit;
 import org.opensearch.core.common.unit.ByteSizeValue;
-import org.opensearch.index.MergeSchedulerConfig;
 
 import java.util.concurrent.TimeUnit;
 
@@ -80,7 +79,7 @@ public class RecoverySettings {
     /**
      * Dynamic setting to set a threshold for minimum size of a merged segment to be warmed.
      */
-    public static final Setting<ByteSizeValue> INDICES_REPLICATION_MERGED_SEGMENT_WARMER_SEGMENT_SIZE_THRESHOLD_SETTING = Setting
+    public static final Setting<ByteSizeValue> INDICES_REPLICATION_MERGES_WARMER_SEGMENT_SIZE_THRESHOLD_SETTING = Setting
         .byteSizeSetting(
             "indices.replication.merges.warmer.segment_size_threshold",
             new ByteSizeValue(500, ByteSizeUnit.MB),
@@ -91,7 +90,7 @@ public class RecoverySettings {
     /**
      * Dynamic setting to enable the merged segment warming(pre-copy) feature, default: false
      */
-    public static final Setting<Boolean> INDICES_REPLICATION_MERGED_SEGMENT_WARMER_ENABLED_SETTING = Setting.boolSetting(
+    public static final Setting<Boolean> INDICES_REPLICATION_MERGES_WARMER_ENABLED_SETTING = Setting.boolSetting(
         "indices.replication.merges.warmer.enabled",
         false,
         value -> {
@@ -108,7 +107,7 @@ public class RecoverySettings {
     /**
      * Individual speed setting for merged segment replication, default -1B to reuse the setting of recovery.
      */
-    public static final Setting<ByteSizeValue> INDICES_REPLICATION_MERGED_SEGMENT_WARMER_MAX_BYTES_PER_SEC_SETTING = Setting
+    public static final Setting<ByteSizeValue> INDICES_REPLICATION_MERGES_WARMER_MAX_BYTES_PER_SEC_SETTING = Setting
         .byteSizeSetting(
             "indices.replication.merges.warmer.max_bytes_per_sec",
             new ByteSizeValue(-1),
@@ -119,7 +118,7 @@ public class RecoverySettings {
     /**
      * Control the maximum waiting time for replicate merged segment to the replica
      */
-    public static final Setting<TimeValue> INDICES_REPLICATION_MERGED_SEGMENT_WARMER_TIMEOUT_SETTING = Setting.timeSetting(
+    public static final Setting<TimeValue> INDICES_REPLICATION_MERGES_WARMER_TIMEOUT_SETTING = Setting.timeSetting(
         "indices.replication.merges.warmer.timeout",
         TimeValue.timeValueMinutes(15),
         TimeValue.timeValueMinutes(0),
@@ -283,10 +282,10 @@ public class RecoverySettings {
             recoveryRateLimiter = new SimpleRateLimiter(recoveryMaxBytesPerSec.getMbFrac());
         }
         this.replicationMaxBytesPerSec = INDICES_REPLICATION_MAX_BYTES_PER_SEC_SETTING.get(settings);
-        this.mergedSegmentReplicationWarmerEnabled = INDICES_REPLICATION_MERGED_SEGMENT_WARMER_ENABLED_SETTING.get(settings);
-        this.mergedSegmentReplicationMaxBytesPerSec = INDICES_REPLICATION_MERGED_SEGMENT_WARMER_MAX_BYTES_PER_SEC_SETTING.get(settings);
-        this.mergedSegmentReplicationTimeout = INDICES_REPLICATION_MERGED_SEGMENT_WARMER_TIMEOUT_SETTING.get(settings);
-        this.mergedSegmentWarmerSegmentSizeThreshold = INDICES_REPLICATION_MERGED_SEGMENT_WARMER_SEGMENT_SIZE_THRESHOLD_SETTING.get(
+        this.mergedSegmentReplicationWarmerEnabled = INDICES_REPLICATION_MERGES_WARMER_ENABLED_SETTING.get(settings);
+        this.mergedSegmentReplicationMaxBytesPerSec = INDICES_REPLICATION_MERGES_WARMER_MAX_BYTES_PER_SEC_SETTING.get(settings);
+        this.mergedSegmentReplicationTimeout = INDICES_REPLICATION_MERGES_WARMER_TIMEOUT_SETTING.get(settings);
+        this.mergedSegmentWarmerSegmentSizeThreshold = INDICES_REPLICATION_MERGES_WARMER_SEGMENT_SIZE_THRESHOLD_SETTING.get(
             settings
         );
         replicationRateLimiter = getReplicationRateLimiter(replicationMaxBytesPerSec);
@@ -299,19 +298,19 @@ public class RecoverySettings {
         clusterSettings.addSettingsUpdateConsumer(INDICES_RECOVERY_MAX_BYTES_PER_SEC_SETTING, this::setRecoveryMaxBytesPerSec);
         clusterSettings.addSettingsUpdateConsumer(INDICES_REPLICATION_MAX_BYTES_PER_SEC_SETTING, this::setReplicationMaxBytesPerSec);
         clusterSettings.addSettingsUpdateConsumer(
-            RecoverySettings.INDICES_REPLICATION_MERGED_SEGMENT_WARMER_ENABLED_SETTING,
+            RecoverySettings.INDICES_REPLICATION_MERGES_WARMER_ENABLED_SETTING,
             this::setIndicesMergedSegmentReplicationWarmerEnabled
         );
         clusterSettings.addSettingsUpdateConsumer(
-            INDICES_REPLICATION_MERGED_SEGMENT_WARMER_MAX_BYTES_PER_SEC_SETTING,
+            INDICES_REPLICATION_MERGES_WARMER_MAX_BYTES_PER_SEC_SETTING,
             this::setMergedSegmentReplicationMaxBytesPerSec
         );
         clusterSettings.addSettingsUpdateConsumer(
-            INDICES_REPLICATION_MERGED_SEGMENT_WARMER_TIMEOUT_SETTING,
+            INDICES_REPLICATION_MERGES_WARMER_TIMEOUT_SETTING,
             this::setMergedSegmentReplicationTimeout
         );
         clusterSettings.addSettingsUpdateConsumer(
-            INDICES_REPLICATION_MERGED_SEGMENT_WARMER_SEGMENT_SIZE_THRESHOLD_SETTING,
+            INDICES_REPLICATION_MERGES_WARMER_SEGMENT_SIZE_THRESHOLD_SETTING,
             this::setMergedSegmentWarmerSegmentSizeThreshold
         );
         clusterSettings.addSettingsUpdateConsumer(INDICES_RECOVERY_MAX_CONCURRENT_FILE_CHUNKS_SETTING, this::setMaxConcurrentFileChunks);

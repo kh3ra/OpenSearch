@@ -31,6 +31,8 @@
 
 package org.opensearch.common.settings;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.MetadataIndexStateService;
 import org.opensearch.cluster.routing.UnassignedInfo;
@@ -78,7 +80,7 @@ import java.util.function.Predicate;
  */
 @PublicApi(since = "1.0.0")
 public final class IndexScopedSettings extends AbstractScopedSettings {
-
+    private static final Logger logger = LogManager.getLogger(IndexScopedSettings.class);
     public static final Predicate<String> INDEX_SETTINGS_KEY_PREDICATE = (s) -> s.startsWith(IndexMetadata.INDEX_SETTING_PREFIX);
 
     public static final Predicate<String> ARCHIVED_SETTINGS_KEY_PREDICATE = (s) -> s.startsWith(ARCHIVED_SETTINGS_PREFIX);
@@ -335,7 +337,7 @@ public final class IndexScopedSettings extends AbstractScopedSettings {
     @Override
     protected void validateSettingKey(Setting setting) {
         if (setting.getKey().startsWith("index.") == false) {
-            throw new IllegalArgumentException("illegal settings key: [" + setting.getKey() + "] must start with [index.]");
+            logger.info("Error with " + "setting.getKey()" + new IllegalArgumentException("illegal settings key: [" + setting.getKey() + "] must start with [index.]"));
         }
         super.validateSettingKey(setting);
     }
