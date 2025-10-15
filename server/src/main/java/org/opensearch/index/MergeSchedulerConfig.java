@@ -92,16 +92,30 @@ import org.opensearch.common.util.concurrent.OpenSearchExecutors;
 @PublicApi(since = "1.0.0")
 public final class MergeSchedulerConfig {
 
+    public static final Setting<Integer> CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING = new Setting<>(
+        "cluster.default.index.merge.scheduler.max_thread_count",
+        (s) -> Integer.toString(Math.max(1, Math.min(4, OpenSearchExecutors.allocatedProcessors(s) / 2))),
+        (s) -> Setting.parseInt(s, 1, "cluster.default.index.merge.scheduler.max_thread_count"),
+        Property.Dynamic,
+        Property.NodeScope
+    );
+    public static final Setting<Integer> CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING = new Setting<>(
+        "cluster.default.index.merge.scheduler.max_merge_count",
+        (s) -> Integer.toString(CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(s) + 5),
+        (s) -> Setting.parseInt(s, 1, "cluster.default.index.merge.scheduler.max_merge_count"),
+        Property.Dynamic,
+        Property.NodeScope
+    );
     public static final Setting<Integer> MAX_THREAD_COUNT_SETTING = new Setting<>(
         "index.merge.scheduler.max_thread_count",
-        (s) -> Integer.toString(Math.max(1, Math.min(4, OpenSearchExecutors.allocatedProcessors(s) / 2))),
+        (s) -> Integer.toString(CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(s)),
         (s) -> Setting.parseInt(s, 1, "index.merge.scheduler.max_thread_count"),
         Property.Dynamic,
         Property.IndexScope
     );
     public static final Setting<Integer> MAX_MERGE_COUNT_SETTING = new Setting<>(
         "index.merge.scheduler.max_merge_count",
-        (s) -> Integer.toString(MAX_THREAD_COUNT_SETTING.get(s) + 5),
+        (s) -> Integer.toString(CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(s)),
         (s) -> Setting.parseInt(s, 1, "index.merge.scheduler.max_merge_count"),
         Property.Dynamic,
         Property.IndexScope
