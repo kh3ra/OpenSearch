@@ -32,12 +32,15 @@
 
 package org.opensearch.index;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.ConcurrentMergeScheduler;
 import org.opensearch.common.annotation.PublicApi;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Setting.Property;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.concurrent.OpenSearchExecutors;
+import org.opensearch.indices.IndicesService;
 
 /**
  * The merge scheduler (<code>ConcurrentMergeScheduler</code>) controls the execution of
@@ -91,38 +94,25 @@ import org.opensearch.common.util.concurrent.OpenSearchExecutors;
  */
 @PublicApi(since = "1.0.0")
 public final class MergeSchedulerConfig {
+    public static final boolean CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE = true;
 
-    public static final Setting<Integer> CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING = new Setting<>(
-        "cluster.default.index.merge.scheduler.max_thread_count",
-        (s) -> Integer.toString(Math.max(1, Math.min(4, OpenSearchExecutors.allocatedProcessors(s) / 2))),
-        (s) -> Setting.parseInt(s, 1, "cluster.default.index.merge.scheduler.max_thread_count"),
-        Property.Dynamic,
-        Property.NodeScope
-    );
-    public static final Setting<Integer> CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING = new Setting<>(
-        "cluster.default.index.merge.scheduler.max_merge_count",
-        (s) -> Integer.toString(CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(s) + 5),
-        (s) -> Setting.parseInt(s, 1, "cluster.default.index.merge.scheduler.max_merge_count"),
-        Property.Dynamic,
-        Property.NodeScope
-    );
     public static final Setting<Integer> MAX_THREAD_COUNT_SETTING = new Setting<>(
         "index.merge.scheduler.max_thread_count",
-        (s) -> Integer.toString(CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(s)),
+        MergeSchedulerConfig::getClusterDefaultMaxThreadCount,
         (s) -> Setting.parseInt(s, 1, "index.merge.scheduler.max_thread_count"),
         Property.Dynamic,
         Property.IndexScope
     );
     public static final Setting<Integer> MAX_MERGE_COUNT_SETTING = new Setting<>(
         "index.merge.scheduler.max_merge_count",
-        (s) -> Integer.toString(CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(s)),
+        MergeSchedulerConfig::getClusterDefaultMaxMergeCount,
         (s) -> Setting.parseInt(s, 1, "index.merge.scheduler.max_merge_count"),
         Property.Dynamic,
         Property.IndexScope
     );
     public static final Setting<Boolean> AUTO_THROTTLE_SETTING = Setting.boolSetting(
         "index.merge.scheduler.auto_throttle",
-        true,
+        MergeSchedulerConfig.CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE,
         Property.Dynamic,
         Property.IndexScope
     );
@@ -169,7 +159,7 @@ public final class MergeSchedulerConfig {
     /**
      * Enables / disables auto throttling on the {@link ConcurrentMergeScheduler}
      */
-    void setAutoThrottle(boolean autoThrottle) {
+    public void setAutoThrottle(boolean autoThrottle) {
         this.autoThrottle = autoThrottle;
     }
 
@@ -184,20 +174,34 @@ public final class MergeSchedulerConfig {
      * Expert: directly set the maximum number of merge threads and
      * simultaneous merges allowed.
      */
-    void setMaxThreadAndMergeCount(int maxThreadCount, int maxMergeCount) {
+    public void setMaxThreadAndMergeCount(int maxThreadCount, int maxMergeCount) {
+        validateMaxThreadAndMergeCount(maxThreadCount, maxMergeCount);
+        this.maxThreadCount = maxThreadCount;
+        this.maxMergeCount = maxMergeCount;
+    }
+
+    /**
+     * Validate the values of {@code maxMergeCount} and {@code maxThreadCount}
+     *
+     */
+    static void validateMaxThreadAndMergeCount(int maxThreadCount, int maxMergeCount) {
         if (maxThreadCount < 1) {
-            throw new IllegalArgumentException("maxThreadCount should be at least 1");
+            throw new IllegalArgumentException("maxThreadCount (= " + maxThreadCount + ") should be at least 1");
         }
         if (maxMergeCount < 1) {
-            throw new IllegalArgumentException("maxMergeCount should be at least 1");
+            throw new IllegalArgumentException("maxMergeCount (= " + maxMergeCount + ") should be at least 1");
         }
         if (maxThreadCount > maxMergeCount) {
             throw new IllegalArgumentException(
                 "maxThreadCount (= " + maxThreadCount + ") should be <= maxMergeCount (= " + maxMergeCount + ")"
             );
         }
-        this.maxThreadCount = maxThreadCount;
-        this.maxMergeCount = maxMergeCount;
+    }
+
+    public static void validateMaxThreadAndMergeCount(Settings settings) {
+        int maxThreadCount = MAX_THREAD_COUNT_SETTING.get(settings);
+        int maxMergeCount = MAX_MERGE_COUNT_SETTING.get(settings);
+        validateMaxThreadAndMergeCount(maxThreadCount, maxMergeCount);
     }
 
     /**
@@ -235,5 +239,13 @@ public final class MergeSchedulerConfig {
         } else {
             this.maxForceMergeMBPerSec = CLUSTER_MAX_FORCE_MERGE_MB_PER_SEC_SETTING.get(indexSettings.getNodeSettings());
         }
+    }
+
+    public static String getClusterDefaultMaxThreadCount(Settings settings) {
+        return Integer.toString(Math.max(1, Math.min(4, OpenSearchExecutors.allocatedProcessors(settings) / 2)));
+    }
+
+    public static String getClusterDefaultMaxMergeCount(Settings settings) {
+        return Integer.toString(IndicesService.CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(settings) + 5);
     }
 }
