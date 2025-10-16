@@ -1315,6 +1315,22 @@ public final class IndexSettings {
     }
 
     /**
+     * Update the cached defaults for {@code MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING} and
+     * {@code MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING}
+     */
+    void setDefaultMaxThreadAndMergeCount(int maxThreadCount, int maxMergeCount) {
+        // Upon updates to the cluster default settings, we always update the cached default values in
+        // the MergeSchedulerConfig, but we only update the actual values when an index level setting is not present
+        boolean updateActuals = MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.exists(getSettings()) == false
+            && MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.exists(getSettings()) == false;
+        mergeSchedulerConfig.setDefaultMaxThreadAndMergeCount(maxThreadCount, maxMergeCount, updateActuals);
+    }
+
+    void setDefaultAutoThrottleEnabled(boolean enabled) {
+        mergeSchedulerConfig.setDefaultAutoThrottleEnabled(enabled);
+    }
+
+    /**
      * Updates the maxMergesAtOnce for actual TieredMergePolicy used by the engine.
      * Sets it to default maxMergesAtOnce if index level settings is being removed
      */

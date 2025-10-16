@@ -309,7 +309,7 @@ public final class ClusterSettings extends AbstractScopedSettings {
                 IndicesQueryCache.INDICES_QUERY_CACHE_COSTLY_MIN_FREQUENCY,
                 IndicesService.CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING,
                 IndicesService.CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING,
-                IndicesService.CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE_SETTING,
+                IndicesService.CLUSTER_DEFAULT_AUTO_THROTTLE_SETTING,
                 IndicesService.CLUSTER_DEFAULT_INDEX_MAX_MERGE_AT_ONCE_SETTING,
                 IndicesService.CLUSTER_DEFAULT_INDEX_REFRESH_INTERVAL_SETTING,
                 IndicesService.CLUSTER_MINIMUM_INDEX_REFRESH_INTERVAL_SETTING,

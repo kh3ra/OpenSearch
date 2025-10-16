@@ -214,6 +214,7 @@ import static org.opensearch.common.util.concurrent.OpenSearchExecutors.daemonTh
 import static org.opensearch.core.common.util.CollectionUtils.arrayAsArrayList;
 import static org.opensearch.index.IndexService.IndexCreationContext.CREATE_INDEX;
 import static org.opensearch.index.IndexService.IndexCreationContext.METADATA_VERIFICATION;
+import static org.opensearch.index.MergeSchedulerConfig.DEFAULT_AUTO_THROTTLE;
 import static org.opensearch.index.TieredMergePolicyProvider.DEFAULT_MAX_MERGE_AT_ONCE;
 import static org.opensearch.index.TieredMergePolicyProvider.MIN_DEFAULT_MAX_MERGE_AT_ONCE;
 import static org.opensearch.index.query.AbstractQueryBuilder.parseInnerQueryBuilder;
@@ -298,7 +299,7 @@ public class IndicesService extends AbstractLifecycleComponent
 
     public static final Setting<Integer> CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING = new Setting<>(
         "cluster.default.index.merge.scheduler.max_thread_count",
-        MergeSchedulerConfig::getClusterDefaultMaxThreadCount,
+        MergeSchedulerConfig::calculateInitialMaxThreadCountDefault,
         (s) -> Setting.parseInt(s, 1, "cluster.default.index.merge.scheduler.max_thread_count"),
         Property.Dynamic,
         Property.NodeScope
@@ -306,15 +307,15 @@ public class IndicesService extends AbstractLifecycleComponent
 
     public static final Setting<Integer> CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING = new Setting<>(
         "cluster.default.index.merge.scheduler.max_merge_count",
-        MergeSchedulerConfig::getClusterDefaultMaxMergeCount,
+        (s) -> Integer.toString(CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(s) + 5),
         (s) -> Setting.parseInt(s, 1, "cluster.default.index.merge.scheduler.max_merge_count"),
         Property.Dynamic,
         Property.NodeScope
     );
 
-    public static final Setting<Boolean> CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE_SETTING = Setting.boolSetting(
+    public static final Setting<Boolean> CLUSTER_DEFAULT_AUTO_THROTTLE_SETTING = Setting.boolSetting(
         "cluster.default.index.merge.scheduler.auto_throttle",
-        MergeSchedulerConfig.CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE,
+        DEFAULT_AUTO_THROTTLE,
         Property.Dynamic,
         Property.NodeScope
     );
@@ -440,9 +441,9 @@ public class IndicesService extends AbstractLifecycleComponent
     private final Function<ShardId, ReplicationStats> segmentReplicationStatsProvider;
     private volatile int maxSizeInRequestCache;
     private volatile int defaultMaxMergeAtOnce;
-    private volatile int defaultMaxMergeCount;
-    private volatile int defaultMaxMergeThreadCount;
-    private volatile boolean defaultMergeAutoThrottleEnabled;
+    private volatile int clusterDefaultMaxThreadCount;
+    private volatile int clusterDefaultMaxMergeCount;
+    private volatile boolean clusterDefaultAutoThrottleEnabled;
 
     @Override
     protected void doStart() {
@@ -616,9 +617,14 @@ public class IndicesService extends AbstractLifecycleComponent
             .addSettingsUpdateConsumer(INDICES_REQUEST_CACHE_MAX_SIZE_ALLOWED_IN_CACHE_SETTING, this::setMaxSizeInRequestCache);
 
         this.defaultMaxMergeAtOnce = CLUSTER_DEFAULT_INDEX_MAX_MERGE_AT_ONCE_SETTING.get(clusterService.getSettings());
-        this.defaultMaxMergeCount = CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(clusterService.getSettings());
-        this.defaultMaxMergeThreadCount = CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(clusterService.getSettings());
-        this.defaultMergeAutoThrottleEnabled = CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE_SETTING.get(clusterService.getSettings());
+
+        clusterDefaultMaxThreadCount = CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(clusterService.getSettings());
+        clusterDefaultMaxMergeCount = CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(clusterService.getSettings());
+        clusterDefaultAutoThrottleEnabled = CLUSTER_DEFAULT_AUTO_THROTTLE_SETTING.get(clusterService.getSettings());
+
+        // call this once to propagate current cluster defaults to all indices
+        setClusterDefaultMaxThreadAndMergeCount(settings);
+
         clusterService.getClusterSettings()
             .addSettingsUpdateConsumer(CLUSTER_DEFAULT_INDEX_MAX_MERGE_AT_ONCE_SETTING, this::onDefaultMaxMergeAtOnceUpdate);
         clusterService.getClusterSettings()
@@ -629,12 +635,19 @@ public class IndicesService extends AbstractLifecycleComponent
         clusterService.getClusterSettings()
             .addSettingsUpdateConsumer(
                 this::setClusterDefaultMaxThreadAndMergeCount,
-                List.of(MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING, MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING),
-                MergeSchedulerConfig::validateMaxThreadAndMergeCount
+                List.of(CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING, CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING),
+                this::validateMaxThreadAndMergeCount
             );
         clusterService.getClusterSettings()
-            .addSettingsUpdateConsumer(CLUSTER_DEFAULT_MERGE_AUTO_THROTTLE_SETTING, this::onClusterDefaultMergeAutoThrottleUpdate);
+            .addSettingsUpdateConsumer(CLUSTER_DEFAULT_AUTO_THROTTLE_SETTING, this::onClusterDefaultMergeAutoThrottleUpdate);
 
+    }
+
+    private void validateMaxThreadAndMergeCount(Settings settings) {
+        MergeSchedulerConfig.validateMaxThreadAndMergeCount(
+            CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(settings),
+            CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(settings)
+        );
     }
 
     @InternalApi
@@ -753,23 +766,23 @@ public class IndicesService extends AbstractLifecycleComponent
     }
 
     private void setClusterDefaultMaxThreadAndMergeCount(Settings settings) {
-        defaultMaxMergeCount = MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.get(settings);
-        defaultMaxMergeThreadCount = MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.get(settings);
+        // CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING and CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING
+        // settings received here have already been validated using
+        // IndicesService.validateMaxThreadAndMergeCount
+        logger.info("setClusterDefaultMaxThreadAndMergeCount called with " + settings);
+        clusterDefaultMaxThreadCount = CLUSTER_DEFAULT_MAX_THREAD_COUNT_SETTING.get(settings);
+        clusterDefaultMaxMergeCount = CLUSTER_DEFAULT_MAX_MERGE_COUNT_SETTING.get(settings);
         for (Map.Entry<String, IndexService> entry : indices.entrySet()) {
             IndexService indexService = entry.getValue();
-            if (MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.exists(settings) == false
-                && MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.exists(settings) == false) indexService.getIndexSettings()
-                    .getMergeSchedulerConfig()
-                    .setMaxThreadAndMergeCount(defaultMaxMergeThreadCount, defaultMaxMergeCount);
+            indexService.onDefaultMaxMergeOrThreadCountUpdate(clusterDefaultMaxThreadCount, clusterDefaultMaxMergeCount);
         }
     }
 
     private void onClusterDefaultMergeAutoThrottleUpdate(Boolean value) {
+        clusterDefaultAutoThrottleEnabled = value;
         for (Map.Entry<String, IndexService> entry : indices.entrySet()) {
             IndexService indexService = entry.getValue();
-            if (MergeSchedulerConfig.AUTO_THROTTLE_SETTING.exists(settings) == false) indexService.getIndexSettings()
-                .getMergeSchedulerConfig()
-                .setAutoThrottle(value);
+            indexService.onDefaultAutoThrottleEnabledUpdate(clusterDefaultAutoThrottleEnabled);
         }
     }
 
@@ -1180,7 +1193,10 @@ public class IndicesService extends AbstractLifecycleComponent
             this.remoteStoreSettings,
             replicator,
             segmentReplicationStatsProvider,
-            this::getClusterDefaultMaxMergeAtOnce
+            this::getClusterDefaultMaxMergeAtOnce,
+            this::getClusterDefaultMaxMergeCount,
+            this::getClusterDefaultMaxThreadCount,
+            this::getClusterDefaultMergeAutoThrottleEnabled
         );
     }
 
@@ -2387,6 +2403,18 @@ public class IndicesService extends AbstractLifecycleComponent
 
     private Integer getClusterDefaultMaxMergeAtOnce() {
         return this.defaultMaxMergeAtOnce;
+    }
+
+    private Integer getClusterDefaultMaxMergeCount() {
+        return this.clusterDefaultMaxMergeCount;
+    }
+
+    private Integer getClusterDefaultMaxThreadCount() {
+        return this.clusterDefaultMaxThreadCount;
+    }
+
+    private Boolean getClusterDefaultMergeAutoThrottleEnabled() {
+        return this.clusterDefaultAutoThrottleEnabled;
     }
 
     public RemoteStoreSettings getRemoteStoreSettings() {
