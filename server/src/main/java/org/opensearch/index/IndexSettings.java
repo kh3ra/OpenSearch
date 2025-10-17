@@ -615,7 +615,7 @@ public final class IndexSettings {
 
     /**
      * Expert: sets the amount of time to wait for merges (during {@link org.apache.lucene.index.IndexWriter#commit}
-     * or {@link org.apache.lucene.index.IndexWriter#getReader(boolean, boolean)}) returned by MergePolicy.findFullFlushMerges(...).
+     * or {@link org.apache.lucene.index.IndexWriter # getReader(boolean, boolean)}) returned by MergePolicy.findFullFlushMerges(...).
      * If this time is reached, we proceed with the commit based on segments merged up to that point. The merges are not
      * aborted, and will still run to completion independent of the commit or getReader call, like natural segment merges.
      */
@@ -1327,7 +1327,12 @@ public final class IndexSettings {
     }
 
     void setDefaultAutoThrottleEnabled(boolean enabled) {
-        mergeSchedulerConfig.setDefaultAutoThrottleEnabled(enabled);
+        // Upon updates to the cluster default settings, we always update the cached default values in
+        // the MergeSchedulerConfig, but we only update the actual values when an index level setting is not present
+        mergeSchedulerConfig.setDefaultAutoThrottleEnabled(
+            enabled,
+            MergeSchedulerConfig.AUTO_THROTTLE_SETTING.exists(getSettings()) == false
+        );
     }
 
     /**

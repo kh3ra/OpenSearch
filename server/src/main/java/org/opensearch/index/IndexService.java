@@ -1262,9 +1262,6 @@ public class IndexService extends AbstractIndexComponent implements IndicesClust
      */
     public void onDefaultAutoThrottleEnabledUpdate(boolean enabled) {
         indexSettings.setDefaultAutoThrottleEnabled(enabled);
-        if (MergeSchedulerConfig.AUTO_THROTTLE_SETTING.exists(indexSettings.getSettings()) == false) {
-            indexSettings.getMergeSchedulerConfig().setAutoThrottle(enabled);
-        }
     }
 
     /**
