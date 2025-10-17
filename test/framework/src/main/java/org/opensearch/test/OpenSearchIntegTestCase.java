@@ -509,13 +509,13 @@ public abstract class OpenSearchIntegTestCase extends OpenSearchTestCase {
             );
         }
         int value = random.nextInt(4);
-        if(value == 3){
+        if (value == 3) {
             final int maxThreadCount = RandomNumbers.randomIntBetween(random, 1, 4);
             final int maxMergeCount = RandomNumbers.randomIntBetween(random, maxThreadCount, maxThreadCount + 4);
             builder.put(MergeSchedulerConfig.MAX_MERGE_COUNT_SETTING.getKey(), maxMergeCount);
             builder.put(MergeSchedulerConfig.MAX_THREAD_COUNT_SETTING.getKey(), maxThreadCount);
         }
-        if (value % 2 == 1){
+        if (value % 2 == 1) {
             builder.put(MergeSchedulerConfig.AUTO_THROTTLE_SETTING.getKey(), false);
         }
 

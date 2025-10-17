@@ -86,7 +86,7 @@ public class ClusterMergeSchedulerConfigsIT extends OpenSearchIntegTestCase {
         internalCluster().startClusterManagerOnlyNode();
     }
 
-    public void test2() throws ExecutionException, InterruptedException {
+    public void testMergeSchedulerSettings() throws ExecutionException, InterruptedException {
         String clusterManagerName = internalCluster().getClusterManagerName();
         List<String> dataNodes = new ArrayList<>(internalCluster().getDataNodeNames());
         String indexName = "log-myindex-1";
@@ -189,11 +189,8 @@ public class ClusterMergeSchedulerConfigsIT extends OpenSearchIntegTestCase {
         assertEquals(20, secondIndexService.getIndexSettings().getMergeSchedulerConfig().getMaxThreadCount());
         assertEquals(20, thirdIndexService.getIndexSettings().getMergeSchedulerConfig().getMaxThreadCount());
         assertEquals(false, indexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());
-        ;
         assertEquals(false, secondIndexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());
-        ;
         assertEquals(false, thirdIndexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());
-        ;
 
         // try to update with an invalid setting
         builder = client().admin().indices().prepareUpdateSettings(indexName);
@@ -230,8 +227,8 @@ public class ClusterMergeSchedulerConfigsIT extends OpenSearchIntegTestCase {
         builder.execute().actionGet();
 
         assertEquals(false, indexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());
-        // Fixing this
-        // assertEquals(true, secondIndexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());;
+        // Known bug; 
+        //assertEquals(true, secondIndexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());;
         assertEquals(false, thirdIndexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());
 
 
