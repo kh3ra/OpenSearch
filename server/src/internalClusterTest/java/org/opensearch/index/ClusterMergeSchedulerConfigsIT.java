@@ -219,15 +219,13 @@ public class ClusterMergeSchedulerConfigsIT extends OpenSearchIntegTestCase {
         assertEquals(20, secondIndexService.getIndexSettings().getMergeSchedulerConfig().getMaxThreadCount());
         assertEquals(20, thirdIndexService.getIndexSettings().getMergeSchedulerConfig().getMaxThreadCount());
 
-        System.out.println("Checking auto throttle");
-
         // setting auto throttle to true for one index
         builder = client().admin().indices().prepareUpdateSettings("log-myindex-2");
         builder.setSettings(Settings.builder().put(MergeSchedulerConfig.AUTO_THROTTLE_SETTING.getKey(), "true").build());
         builder.execute().actionGet();
 
         assertEquals(false, indexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());
-        // Known bug; 
+        // Known bug;
         //assertEquals(true, secondIndexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());;
         assertEquals(false, thirdIndexService.getIndexSettings().getMergeSchedulerConfig().isAutoThrottle());
 
