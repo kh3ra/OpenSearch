@@ -64,7 +64,6 @@ public class ClusterMaxMergesAtOnceIT extends AbstractSnapshotIntegTestCase {
         internalCluster().startClusterManagerOnlyNode();
     }
 
-    @AwaitsFix(bugUrl = "https://github.com/opensearch-project/OpenSearch/issues/18056")
     public void testClusterLevelDefaultUpdatesMergePolicy() throws ExecutionException, InterruptedException {
         String clusterManagerName = internalCluster().getClusterManagerName();
         List<String> dataNodes = new ArrayList<>(internalCluster().getDataNodeNames());
@@ -141,5 +140,36 @@ public class ClusterMaxMergesAtOnceIT extends AbstractSnapshotIntegTestCase {
         assertEquals(35, ((OpenSearchTieredMergePolicy) indexService.getIndexSettings().getMergePolicy(true)).getMaxMergeAtOnce());
         assertEquals(35, ((OpenSearchTieredMergePolicy) secondIndexService.getIndexSettings().getMergePolicy(true)).getMaxMergeAtOnce());
         assertEquals(17, ((OpenSearchTieredMergePolicy) thirdIndexService.getIndexSettings().getMergePolicy(true)).getMaxMergeAtOnce());
+    }
+
+    public void test2() throws ExecutionException, InterruptedException {
+        String clusterManagerName = internalCluster().getClusterManagerName();
+        List<String> dataNodes = new ArrayList<>(internalCluster().getDataNodeNames());
+
+        String indexName = "log-myindex-1";
+        createIndex(indexName);
+        ensureYellowAndNoInitializingShards(indexName);
+        ensureGreen(indexName);
+        GetIndexResponse getIndexResponse = client(clusterManagerName).admin().indices().getIndex(new GetIndexRequest()).get();
+        IndicesService indicesService = internalCluster().getInstance(IndicesService.class, randomFrom(dataNodes));
+        String uuid = getIndexResponse.getSettings().get(indexName).get(IndexMetadata.SETTING_INDEX_UUID);
+        IndexService indexService = indicesService.indexService(new Index(indexName, uuid));
+        assertEquals(30, ((OpenSearchTieredMergePolicy) indexService.getIndexSettings().getMergePolicy(true)).getMaxMergeAtOnce());
+
+        client(clusterManagerName).admin()
+            .cluster()
+            .prepareUpdateSettings()
+            .setTransientSettings(Settings.builder().put(CLUSTER_DEFAULT_INDEX_MAX_MERGE_AT_ONCE_SETTING.getKey(), 20))
+            .get();
+
+        assertEquals(20, ((OpenSearchTieredMergePolicy) indexService.getIndexSettings().getMergePolicy(true)).getMaxMergeAtOnce());
+
+        UpdateSettingsRequestBuilder builder = client().admin().indices().prepareUpdateSettings(indexName);
+        builder.setSettings(
+            Settings.builder().putNull(TieredMergePolicyProvider.INDEX_MERGE_POLICY_MAX_MERGE_AT_ONCE_SETTING.getKey()).build()
+        );
+        builder.execute().actionGet();
+
+        assertEquals(30, ((OpenSearchTieredMergePolicy) indexService.getIndexSettings().getMergePolicy(true)).getMaxMergeAtOnce());
     }
 }
